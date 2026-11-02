@@ -1,5 +1,7 @@
+// Kết nối với Socket.IO Server
 const socket = io();
 
+// Lấy các thành phần trên giao diện HTML
 const connectionForm = document.getElementById("connection-form");
 const disconnectBtn = document.getElementById("disconnect-btn");
 const subscribeForm = document.getElementById("subscribe-form");
@@ -15,10 +17,12 @@ const messageCount = document.getElementById("message-count");
 const activityLog = document.getElementById("activity-log");
 const clearMessagesBtn = document.getElementById("clear-messages");
 
+// Lưu danh sách Topic và tin nhắn nhận được
 let topics = [];
 let messages = [];
 let connected = false;
 
+// Cập nhật trạng thái kết nối trên giao diện
 function updateStatus(state, message) {
     connectionStatus.textContent = state;
     statusIndicator.className = "status-dot";
@@ -36,6 +40,7 @@ function updateStatus(state, message) {
     addLog(message);
 }
 
+// Thêm thông tin vào lịch sử hoạt động
 function addLog(message) {
     if (activityLog.querySelector(".empty-state")) {
         activityLog.innerHTML = "";
@@ -48,6 +53,7 @@ function addLog(message) {
     activityLog.prepend(item);
 }
 
+// Hiển thị danh sách Topic đã đăng ký
 function showTopics() {
     subscribedTopics.innerHTML = "";
 
@@ -64,6 +70,7 @@ function showTopics() {
     });
 }
 
+// Hiển thị các tin nhắn MQTT nhận được
 function showMessages() {
     messageList.innerHTML = "";
 
@@ -100,14 +107,17 @@ function showMessages() {
     messageCount.textContent = `${messages.length} messages`;
 }
 
+// Khi trình duyệt kết nối được với Server
 socket.on("connect", () => {
     addLog("Đã kết nối tới Dashboard Server.");
 });
 
+// Khi mất kết nối với Server
 socket.on("disconnect", () => {
     updateStatus("disconnected", "Mất kết nối tới Dashboard Server.");
 });
 
+// Nhận trạng thái từ MQTT Broker gửi về
 socket.on("status", data => {
     const state = data.state || "disconnected";
 
@@ -118,6 +128,7 @@ socket.on("status", data => {
     }
 });
 
+// Nhận tin nhắn MQTT từ Backend
 socket.on("mqtt_message", data => {
     messages.unshift(data);
 
@@ -128,6 +139,7 @@ socket.on("mqtt_message", data => {
     showMessages();
 });
 
+// Xử lý chức năng kết nối MQTT Broker
 connectionForm.addEventListener("submit", event => {
     event.preventDefault();
 
@@ -155,6 +167,7 @@ connectionForm.addEventListener("submit", event => {
     });
 });
 
+// Xử lý chức năng ngắt kết nối Broker
 disconnectBtn.addEventListener("click", () => {
     socket.emit("disconnect_broker", {}, response => {
         if (response && response.ok) {
@@ -165,6 +178,7 @@ disconnectBtn.addEventListener("click", () => {
     });
 });
 
+// Xử lý chức năng đăng ký Topic
 subscribeForm.addEventListener("submit", event => {
     event.preventDefault();
 
@@ -189,6 +203,7 @@ subscribeForm.addEventListener("submit", event => {
     });
 });
 
+// Xử lý chức năng hủy đăng ký Topic
 unsubscribeBtn.addEventListener("click", () => {
     const topic = document.getElementById("subscribe-topic").value.trim();
 
@@ -208,6 +223,7 @@ unsubscribeBtn.addEventListener("click", () => {
     });
 });
 
+// Xử lý chức năng gửi dữ liệu bằng Publish
 publishForm.addEventListener("submit", event => {
     event.preventDefault();
 
@@ -235,11 +251,13 @@ publishForm.addEventListener("submit", event => {
     });
 });
 
+// Xóa toàn bộ tin nhắn đang hiển thị
 clearMessagesBtn.addEventListener("click", () => {
     messages = [];
     showMessages();
 });
 
+// Hiển thị trạng thái ban đầu khi mở trang web
 updateStatus("disconnected", "Dashboard đã sẵn sàng.");
 showTopics();
 showMessages();
