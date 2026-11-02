@@ -19,10 +19,13 @@
         </div>
 
         <!-- Hiển thị trạng thái kết nối Broker -->
-        <div class="connection-status">
-            <span id="status-indicator" class="status-dot"></span>
-            <span id="connection-status">Disconnected</span>
-        </div>
+        <div class="header-actions">
+    <button type="button" id="theme-toggle" aria-label="Chuyển sang chế độ tối">🌙 Chế độ tối</button>
+    <div class="connection-status">
+        <span id="status-indicator" class="status-dot"></span>
+        <span id="connection-status">Disconnected</span>
+    </div>
+</div>
     </header>
 
     <main class="container">
@@ -130,7 +133,12 @@
             </div>
 
             <p id="message-count">0 messages</p>
-
+       <!-- Ô lọc tin nhắn theo Topic hoặc nội dung -->
+            <div class="form-group message-filter">
+                <label for="message-filter">Lọc tin nhắn</label>
+                <input type="text" id="message-filter"
+                       placeholder="Nhập Topic hoặc nội dung, ví dụ: temp, humi...">
+            </div>
             <div class="table-container">
                 <table>
                     <thead>
