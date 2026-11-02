@@ -259,3 +259,98 @@ th {
         gap: 10px;
     }
 }
+
+/* NÚT CHUYỂN ĐỔI GIAO DIỆN */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+#theme-toggle {
+    background-color: #475569;
+    color: white;
+    border: 1px solid #64748b;
+}
+
+#theme-toggle:hover {
+    background-color: #334155;
+}
+
+/* Ô LỌC TIN NHẮN */
+.message-filter {
+    margin-top: 15px;
+    max-width: 500px;
+}
+
+.message-filter input {
+    background-color: white;
+}
+
+/* CHẾ ĐỘ TỐI */
+:root[data-theme="dark"] body {
+    background-color: #0f172a;
+    color: #e2e8f0;
+}
+
+:root[data-theme="dark"] .card {
+    background-color: #1e293b;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="dark"] .card h2,
+:root[data-theme="dark"] .topic-list h3 {
+    color: #f1f5f9;
+}
+
+:root[data-theme="dark"] .form-group label {
+    color: #e2e8f0;
+}
+
+:root[data-theme="dark"] .form-group input,
+:root[data-theme="dark"] .form-group textarea,
+:root[data-theme="dark"] .form-group select {
+    background-color: #334155;
+    color: #f8fafc;
+    border-color: #475569;
+}
+
+:root[data-theme="dark"] .topic-list li {
+    background-color: #334155;
+    color: #e2e8f0;
+}
+
+:root[data-theme="dark"] th {
+    background-color: #334155;
+    color: #f8fafc;
+}
+
+:root[data-theme="dark"] td {
+    color: #e2e8f0;
+    border-bottom-color: #475569;
+}
+
+:root[data-theme="dark"] #activity-log {
+    background-color: #334155;
+    color: #e2e8f0;
+}
+
+:root[data-theme="dark"] #activity-log p {
+    border-bottom-color: #475569;
+}
+
+:root[data-theme="dark"] .empty-state {
+    color: #94a3b8;
+}
+
+:root[data-theme="dark"] #message-count {
+    color: #cbd5e1;
+}
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+    .header-actions {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+}
