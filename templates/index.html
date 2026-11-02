@@ -1,1 +1,287 @@
-<!-- MQTT Dashboard - Frontend -->
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Dashboard</title>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+
+<body>
+
+    <div class="dashboard">
+
+        <!-- HEADER -->
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">M</div>
+                <div>
+                    <h1>MQTT Dashboard</h1>
+                    <p>IoT Message Monitoring System</p>
+                </div>
+            </div>
+
+            <div class="header-status">
+                <span id="status-indicator" class="status-dot"></span>
+                <span id="connection-status">Disconnected</span>
+            </div>
+        </header>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-content">
+
+            <!-- BROKER CONNECTION -->
+            <section class="card connection-card">
+                <div class="section-heading">
+                    <div>
+                        <h2>Broker Connection</h2>
+                        <p>Configure your MQTT broker connection</p>
+                    </div>
+                    <span class="section-icon">01</span>
+                </div>
+
+                <form id="connection-form">
+
+                    <div class="form-grid">
+
+                        <div class="form-group">
+                            <label for="broker-host">Broker Host</label>
+                            <input
+                                type="text"
+                                id="broker-host"
+                                placeholder="broker.hivemq.com"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="broker-port">Port</label>
+                            <input
+                                type="number"
+                                id="broker-port"
+                                value="1883"
+                                min="1"
+                                max="65535"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="broker-username">Username</label>
+                            <input
+                                type="text"
+                                id="broker-username"
+                                placeholder="Optional"
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="broker-password">Password</label>
+                            <input
+                                type="password"
+                                id="broker-password"
+                                placeholder="Optional"
+                            >
+                        </div>
+
+                    </div>
+
+                    <div class="form-options">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="use-tls">
+                            Enable TLS
+                        </label>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" id="connect-btn" class="btn btn-primary">
+                            Connect Broker
+                        </button>
+
+                        <button type="button" id="disconnect-btn" class="btn btn-danger">
+                            Disconnect
+                        </button>
+                    </div>
+
+                </form>
+            </section>
+
+            <!-- SUBSCRIBE AND PUBLISH -->
+            <div class="two-column">
+
+                <!-- SUBSCRIBE -->
+                <section class="card">
+                    <div class="section-heading">
+                        <div>
+                            <h2>Subscribe Topic</h2>
+                            <p>Subscribe to receive MQTT messages</p>
+                        </div>
+                        <span class="section-icon">02</span>
+                    </div>
+
+                    <form id="subscribe-form">
+
+                        <div class="form-group">
+                            <label for="subscribe-topic">Topic</label>
+                            <input
+                                type="text"
+                                id="subscribe-topic"
+                                placeholder="home/temperature"
+                                required
+                            >
+                        </div>
+
+                        <div class="button-group">
+                            <button type="submit" class="btn btn-primary">
+                                Subscribe
+                            </button>
+
+                            <button type="button" id="unsubscribe-btn" class="btn btn-secondary">
+                                Unsubscribe
+                            </button>
+                        </div>
+
+                    </form>
+
+                    <div class="topic-list">
+                        <h3>Subscribed Topics</h3>
+                        <ul id="subscribed-topics">
+                            <li class="empty-state">No topics subscribed</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- PUBLISH -->
+                <section class="card">
+                    <div class="section-heading">
+                        <div>
+                            <h2>Publish Message</h2>
+                            <p>Send messages to an MQTT topic</p>
+                        </div>
+                        <span class="section-icon">03</span>
+                    </div>
+
+                    <form id="publish-form">
+
+                        <div class="form-group">
+                            <label for="publish-topic">Topic</label>
+                            <input
+                                type="text"
+                                id="publish-topic"
+                                placeholder="home/light"
+                                required
+                            >
+                        </div>
+
+                        <div class="form-group">
+                            <label for="publish-payload">Payload</label>
+                            <textarea
+                                id="publish-payload"
+                                rows="4"
+                                placeholder="Enter message content..."
+                                required
+                            ></textarea>
+                        </div>
+
+                        <div class="form-options">
+
+                            <div class="form-group qos-group">
+                                <label for="publish-qos">QoS</label>
+                                <select id="publish-qos">
+                                    <option value="0">QoS 0</option>
+                                    <option value="1">QoS 1</option>
+                                    <option value="2">QoS 2</option>
+                                </select>
+                            </div>
+
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="publish-retain">
+                                Retain
+                            </label>
+
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-full">
+                            Publish Message
+                        </button>
+
+                    </form>
+                </section>
+
+            </div>
+
+            <!-- MESSAGE MONITOR -->
+            <section class="card message-card">
+
+                <div class="section-heading">
+                    <div>
+                        <h2>Message Monitor</h2>
+                        <p>Real-time MQTT message monitoring</p>
+                    </div>
+
+                    <div class="monitor-actions">
+                        <span id="message-count">0 messages</span>
+                        <button type="button" id="clear-messages" class="btn btn-secondary">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Topic</th>
+                                <th>Payload</th>
+                                <th>QoS</th>
+                                <th>Retain</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="message-list">
+                            <tr>
+                                <td colspan="5" class="empty-state">
+                                    Waiting for MQTT messages...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </section>
+
+            <!-- ACTIVITY LOG -->
+            <section class="card log-card">
+                <div class="section-heading">
+                    <div>
+                        <h2>Activity Log</h2>
+                        <p>System connection and operation history</p>
+                    </div>
+                </div>
+
+                <div id="activity-log" class="activity-log">
+                    <p class="empty-state">No activity yet</p>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- FOOTER -->
+        <footer class="footer">
+            <p>MQTT Dashboard &copy; 2026 | IoT Monitoring System</p>
+        </footer>
+
+    </div>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+
+</body>
+</html>
