@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="MQTT Dashboard - kết nối, subscribe và publish MQTT theo thời gian thực.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f2f1ec">
+  <title>MQTT Dashboard</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("mqtt-dashboard-theme");
+        var theme = saved === "dark" || saved === "light"
+          ? saved
+          : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.dataset.theme = theme;
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) {
+          meta.setAttribute("content", theme === "dark" ? "#101110" : "#f2f1ec");
+        }
+      } catch (error) {
+        document.documentElement.dataset.theme = "light";
+      }
+    })();
+  </script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='4' fill='%231f5f99'/%3E%3Cpath d='M18 42a20 20 0 0 1 28 0M25 49a10 10 0 0 1 14 0M32 55h.01' fill='none' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main">Bỏ qua điều hướng</a>
+
+  <header class="app-header">
+    <div class="header-inner">
+      <h1 class="brand-title">
+        <span class="brand-product">MQTT</span>
+        <span class="brand-slash" aria-hidden="true">/</span>
+        <span class="brand-name">Dashboard</span>
+      </h1>
+      <div class="header-actions">
+        <button class="icon-btn theme-toggle" id="theme-toggle" type="button" aria-label="Chuyển sang chế độ tối" aria-pressed="false" title="Chuyển giao diện sáng/tối">
+          <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+          </svg>
+          <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2"></path><path d="M12 20v2"></path>
+            <path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path>
+            <path d="M2 12h2"></path><path d="M20 12h2"></path>
+            <path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main" id="main">
+    <section class="connection-bar" aria-labelledby="connection-title">
+      <h2 class="sr-only" id="connection-title">Kết nối broker</h2>
+
+      <div class="status-panel connection-status" id="status-panel" data-state="disconnected">
+        <span class="status-dot" aria-hidden="true"></span>
+        <div class="status-copy">
+          <span class="status-label" id="status-label">Chưa kết nối</span>
+          <span class="status-message" id="status-message" role="status" aria-live="polite">Chưa kết nối tới broker.</span>
+        </div>
+      </div>
+
+      <form class="connection-form" id="connection-form" novalidate>
+        <div class="field connection-field connection-field--host">
+          <label for="broker-host">Host</label>
+          <input class="input" id="broker-host" name="host" type="text" value="broker.hivemq.com" placeholder="broker.hivemq.com" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field connection-field connection-field--port">
+          <label for="broker-port">Port</label>
+          <input class="input" id="broker-port" name="port" type="number" min="1" max="65535" inputmode="numeric" placeholder="1883" autocomplete="off">
+        </div>
+        <div class="field connection-field connection-field--user">
+          <label for="broker-username">Username</label>
+          <input class="input" id="broker-username" name="username" type="text" placeholder="Tùy chọn" autocomplete="username" spellcheck="false">
+        </div>
+        <div class="field connection-field connection-field--pass">
+          <label for="broker-password">Password</label>
+          <div class="input-wrap">
+            <input class="input" id="broker-password" name="password" type="password" placeholder="Tùy chọn" autocomplete="current-password">
+            <button class="input-action" id="toggle-password" type="button" aria-label="Hiện password" title="Hiện password">
+              <svg class="icon icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+              <svg class="icon icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m2 2 20 20"></path>
+                <path d="M6.7 6.7C3.9 8.3 2 12 2 12s3.5 7 10 7c2 0 3.8-.6 5.3-1.5"></path>
+                <path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17.8 17.8 0 0 1-2.1 2.9"></path>
+                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <label class="switch switch--inline" for="use-tls">
+          <input id="use-tls" name="use_tls" type="checkbox">
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-text">TLS <span class="switch-hint sr-only" id="tls-hint">(mặc định cổng 8883)</span></span>
+        </label>
+
+        <div class="connection-actions">
+          <button class="btn btn-primary" id="connect-btn" type="submit">Connect</button>
+          <button class="btn btn-danger" id="disconnect-btn" type="button" disabled>Disconnect</button>
+        </div>
+      </form>
+    </section>
+
+    <div class="workspace">
+      <section class="messages-pane" aria-labelledby="messages-title">
+        <div class="pane-header">
+          <div class="pane-heading">
+            <h2 class="pane-title" id="messages-title">Tin nhắn</h2>
+            <span class="count-badge" id="message-count" title="Số tin nhắn đang lưu">0</span>
+          </div>
+
+          <div class="messages-toolbar">
+            <div class="search-field">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>
+              </svg>
+              <label class="sr-only" for="topic-filter">Lọc tin nhắn theo topic</label>
+              <input class="input input--mono" id="topic-filter" type="search" placeholder="Lọc theo topic (+, #)" autocomplete="off" spellcheck="false">
+            </div>
+            <button class="btn btn-quiet btn-sm" id="clear-messages" type="button" title="Xóa toàn bộ tin nhắn">Xóa</button>
+          </div>
+        </div>
+
+        <div class="messages-scroll" id="messages-scroll" tabindex="0" role="region" aria-label="Danh sách tin nhắn nhận được">
+          <table class="messages-table">
+            <thead>
+              <tr>
+                <th scope="col" class="col-time">Giờ</th>
+                <th scope="col" class="col-topic">Topic</th>
+                <th scope="col" class="col-payload">Payload</th>
+                <th scope="col" class="col-qos">QoS</th>
+                <th scope="col" class="col-retain">Retain</th>
+              </tr>
+            </thead>
+            <tbody id="messages-body"></tbody>
+          </table>
+
+          <div class="empty-state messages-empty" id="messages-empty">
+            <strong id="messages-empty-title">Chưa có tin nhắn</strong>
+            <span id="messages-empty-text">Subscribe một topic để bắt đầu nhận dữ liệu.</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="side-rail" aria-label="Topic và publish">
+        <section class="rail-section" aria-labelledby="subscriptions-title">
+          <div class="section-header">
+            <h2 class="section-title" id="subscriptions-title">Topic đang theo dõi</h2>
+            <span class="count-badge" id="topic-count" title="Số topic đang subscribe">0</span>
+          </div>
+          <div class="section-body">
+            <form class="inline-form" id="subscription-form" novalidate>
+              <div class="field inline-field">
+                <label class="sr-only" for="subscription-topic">Topic cần subscribe</label>
+                <input class="input input--mono" id="subscription-topic" type="text" placeholder="demo/sensor/#" autocomplete="off" spellcheck="false">
+              </div>
+              <button class="btn btn-primary btn-sm" id="subscribe-btn" type="submit" disabled>Subscribe</button>
+            </form>
+            <p class="field-hint">Wildcard <code>+</code> và <code>#</code></p>
+
+            <ul class="topic-list" id="topic-list" data-connected="false" aria-label="Danh sách topic đang subscribe"></ul>
+            <div class="empty-state empty-state--compact" id="topic-empty">
+              <strong>Chưa có topic</strong>
+              <span>Subscribe để nhận tin nhắn từ broker.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="rail-section" aria-labelledby="publish-title">
+          <div class="section-header">
+            <h2 class="section-title" id="publish-title">Publish</h2>
+          </div>
+          <div class="section-body">
+            <form class="publish-form" id="publish-form" novalidate>
+              <div class="field">
+                <label for="publish-topic">Topic</label>
+                <input class="input input--mono" id="publish-topic" type="text" placeholder="demo/sensor/temp" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="publish-payload">Payload</label>
+                <textarea class="input textarea" id="publish-payload" rows="4" placeholder='{"temperature": 25.4}' spellcheck="false"></textarea>
+              </div>
+              <div class="publish-row">
+                <div class="field publish-qos">
+                  <label for="publish-qos">QoS</label>
+                  <select class="input select" id="publish-qos">
+                    <option value="0">0 — At most once</option>
+                    <option value="1">1 — At least once</option>
+                    <option value="2">2 — Exactly once</option>
+                  </select>
+                </div>
+                <label class="switch publish-retain" for="publish-retain">
+                  <input id="publish-retain" type="checkbox">
+                  <span class="switch-track" aria-hidden="true"></span>
+                  <span class="switch-text">Retain</span>
+                </label>
+              </div>
+              <button class="btn btn-primary publish-btn" id="publish-btn" type="submit" disabled>Publish</button>
+              <p class="field-hint"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> để gửi</p>
+            </form>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

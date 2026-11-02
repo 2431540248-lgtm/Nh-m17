@@ -3,6 +3,7 @@
 Usage:
     python test_publisher.py --host localhost --port 1883
     python test_publisher.py --host broker.emqx.io --port 1883 --interval 1
+    python test_publisher.py --prefix demo --interval 1
 
 Press Ctrl+C to stop.
 """
@@ -17,8 +18,7 @@ import time
 
 import paho.mqtt.client as mqtt
 
-TOPIC_TEMP = "demo/sensor/temp"
-TOPIC_HUMI = "demo/sensor/humi"
+DEFAULT_PREFIX = "demo"
 
 logger = logging.getLogger("test_publisher")
 
@@ -28,6 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Publish fake temperature/humidity data for MQTT Dashboard."
     )
     parser.add_argument("--host", default="localhost", help="MQTT broker host")
+    parser.add_argument(
+        "--prefix",
+        default=DEFAULT_PREFIX,
+        help='Topic prefix (default: "demo"; topics are {prefix}/sensor/temp and '
+        "{prefix}/sensor/humi)",
+    )
     parser.add_argument(
         "--port",
         type=int,
@@ -68,6 +74,12 @@ def main() -> None:
         raise SystemExit("--interval phải lớn hơn 0.")
     if args.count < 0:
         raise SystemExit("--count không được âm.")
+
+    prefix = args.prefix.strip().strip("/")
+    if not prefix:
+        raise SystemExit("--prefix không được để trống.")
+    topic_temp = f"{prefix}/sensor/temp"
+    topic_humi = f"{prefix}/sensor/humi"
 
     logging.basicConfig(
         level=logging.INFO,
@@ -120,13 +132,13 @@ def main() -> None:
             humidity = min(90.0, max(30.0, humidity + random.uniform(-2.0, 2.0)))
 
             temp_info = client.publish(
-                TOPIC_TEMP,
+                topic_temp,
                 f"{temperature:.2f}",
                 qos=args.qos,
                 retain=args.retain,
             )
             humi_info = client.publish(
-                TOPIC_HUMI,
+                topic_humi,
                 f"{humidity:.2f}",
                 qos=args.qos,
                 retain=args.retain,
@@ -144,9 +156,9 @@ def main() -> None:
             logger.info(
                 "Sample %d: %s=%.2f, %s=%.2f",
                 sent,
-                TOPIC_TEMP,
+                topic_temp,
                 temperature,
-                TOPIC_HUMI,
+                topic_humi,
                 humidity,
             )
             time.sleep(args.interval)
