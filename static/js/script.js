@@ -16,7 +16,26 @@ const messageList = document.getElementById("message-list");
 const messageCount = document.getElementById("message-count");
 const activityLog = document.getElementById("activity-log");
 const clearMessagesBtn = document.getElementById("clear-messages");
+const messageFilter = document.getElementById("message-filter");
+const themeToggle = document.getElementById("theme-toggle");
 
+// Khởi tạo giao diện sáng/tối và lưu lựa chọn của người dùng
+const savedTheme = localStorage.getItem("mqtt-dashboard-theme") || "light";
+document.documentElement.dataset.theme = savedTheme;
+updateThemeButton();
+
+themeToggle.addEventListener("click", () => {
+    const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = nextTheme;
+    localStorage.setItem("mqtt-dashboard-theme", nextTheme);
+    updateThemeButton();
+});
+
+function updateThemeButton() {
+    const isDark = document.documentElement.dataset.theme === "dark";
+    themeToggle.textContent = isDark ? "☀️ Chế độ sáng" : "🌙 Chế độ tối";
+    themeToggle.setAttribute("aria-pressed", String(isDark));
+}
 // Lưu danh sách Topic và tin nhắn nhận được
 let topics = [];
 let messages = [];
@@ -74,16 +93,27 @@ function showTopics() {
 function showMessages() {
     messageList.innerHTML = "";
 
-    if (messages.length === 0) {
+    // Lấy từ khóa người dùng nhập vào ô lọc
+    const keyword = messageFilter.value.trim().toLowerCase();
+
+    // Lọc tin nhắn theo Topic hoặc nội dung
+    const filteredMessages = messages.filter(message => {
+        const topic = String(message.topic || "").toLowerCase();
+        const payload = String(message.payload || "").toLowerCase();
+
+        return topic.includes(keyword) || payload.includes(keyword);
+    });
+
+    if (filteredMessages.length === 0) {
         messageList.innerHTML = `
             <tr>
                 <td colspan="5" class="empty-state">
-                    Waiting for MQTT messages...
+                    No matching MQTT messages...
                 </td>
             </tr>
         `;
     } else {
-        messages.forEach(message => {
+        filteredMessages.forEach(message => {
             const row = document.createElement("tr");
 
             const values = [
@@ -104,7 +134,9 @@ function showMessages() {
         });
     }
 
-    messageCount.textContent = `${messages.length} messages`;
+    messageCount.textContent = keyword
+        ? `${filteredMessages.length}/${messages.length} messages`
+        : `${messages.length} messages`;
 }
 
 // Khi trình duyệt kết nối được với Server
@@ -250,7 +282,8 @@ publishForm.addEventListener("submit", event => {
         }
     });
 });
-
+// Cập nhật bảng ngay khi người dùng nhập từ khóa lọc
+messageFilter.addEventListener("input", showMessages);
 // Xóa toàn bộ tin nhắn đang hiển thị
 clearMessagesBtn.addEventListener("click", () => {
     messages = [];
