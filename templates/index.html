@@ -3,151 +3,230 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MQTT Dashboard</title>
+    <meta name="theme-color" content="#10152b">
+    <title>MQTT Control Center</title>
 
-    <!-- Kết nối file CSS để trang web có giao diện -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-
 <body>
 
-    <!-- Phần đầu trang -->
-    <header class="header">
+<header class="header">
+    <div class="brand">
+        <div class="brand-mark">⌁</div>
         <div class="logo">
-            <h1>MQTT Dashboard</h1>
-            <p>Hệ thống giám sát và trao đổi dữ liệu MQTT</p>
+            <span class="brand-kicker">IOT MONITORING PLATFORM</span>
+            <h1>MQTT <em>Control Center</em></h1>
+            <p>Giám sát và trao đổi dữ liệu thiết bị theo thời gian thực</p>
         </div>
-
-        <!-- Hiển thị trạng thái kết nối Broker -->
-        <div class="header-actions">
-    <button type="button" id="theme-toggle" aria-label="Chuyển sang chế độ tối">🌙 Chế độ tối</button>
-    <div class="connection-status">
-        <span id="status-indicator" class="status-dot"></span>
-        <span id="connection-status">Disconnected</span>
     </div>
-</div>
-    </header>
 
-    <main class="container">
+    <div class="header-actions">
+        <div class="connection-status">
+            <span id="status-indicator" class="status-dot"></span>
+            <span class="status-copy">
+                <small>TRẠNG THÁI BROKER</small>
+                <strong id="connection-status">Disconnected</strong>
+            </span>
+        </div>
+        <button type="button" id="theme-toggle">☾ <span>Chế độ tối</span></button>
+    </div>
+</header>
 
-        <!-- Khu vực nhập thông tin kết nối MQTT Broker -->
+<main class="container">
+
+    <section class="welcome-row">
+        <div>
+            <div class="eyebrow">
+                <span class="eyebrow-line"></span>
+                TỔNG QUAN HỆ THỐNG
+            </div>
+            <h2>Bảng điều khiển <span>MQTT</span></h2>
+            <p>Quản lý kết nối, topic và luồng dữ liệu trên cùng một giao diện.</p>
+        </div>
+        <div class="live-chip">
+            <span class="live-pulse"></span> REAL-TIME CONSOLE
+        </div>
+    </section>
+
+    <div class="dashboard-grid">
+
+        <!-- KẾT NỐI BROKER -->
         <section class="card">
-            <h2>Kết nối MQTT Broker</h2>
+            <div class="card-heading">
+                <div class="heading-icon violet">⌘</div>
+                <div>
+                    <span class="card-kicker">BROKER SETTINGS</span>
+                    <h2>Kết nối MQTT Broker</h2>
+                </div>
+            </div>
 
             <form id="connection-form">
-                <div class="form-group">
-                    <label for="broker-host">Broker Host</label>
-                    <input type="text" id="broker-host" placeholder="Nhập địa chỉ Broker" required>
+                <div class="form-grid">
+                    <div class="form-group span-2">
+                        <label for="broker-host">Broker Host</label>
+                        <input type="text" id="broker-host"
+                            placeholder="Ví dụ: broker.hivemq.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="broker-port">Port</label>
+                        <input type="number" id="broker-port"
+                            value="1883" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="broker-username">Username</label>
+                        <input type="text" id="broker-username"
+                            placeholder="Không bắt buộc">
+                    </div>
+
+                    <div class="form-group span-2">
+                        <label for="broker-password">Password</label>
+                        <input type="password" id="broker-password"
+                            placeholder="Nhập mật khẩu nếu có">
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="broker-port">Port</label>
-                    <input type="number" id="broker-port" value="1883" required>
-                </div>
-
-                <div class="form-group">
-                    <label for="broker-username">Username</label>
-                    <input type="text" id="broker-username" placeholder="Username (nếu có)">
-                </div>
-
-                <div class="form-group">
-                    <label for="broker-password">Password</label>
-                    <input type="password" id="broker-password" placeholder="Password (nếu có)">
-                </div>
-
-                <div class="form-group checkbox-group">
+                <label class="check-row">
                     <input type="checkbox" id="use-tls">
-                    <label for="use-tls">Sử dụng TLS</label>
-                </div>
+                    <span class="custom-check"></span>
+                    <span>Sử dụng kết nối bảo mật TLS</span>
+                </label>
 
                 <div class="button-group">
-                    <button type="submit" id="connect-btn">Connect</button>
-                    <button type="button" id="disconnect-btn">Disconnect</button>
+                    <button type="submit" id="connect-btn" class="btn-primary">
+                        ↗ Connect Broker
+                    </button>
+                    <button type="button" id="disconnect-btn" class="btn-secondary">
+                        Disconnect
+                    </button>
                 </div>
             </form>
         </section>
 
-        <!-- Khu vực đăng ký và hủy đăng ký Topic -->
+        <!-- QUẢN LÝ TOPIC -->
         <section class="card">
-            <h2>Quản lý Topic</h2>
+            <div class="card-heading">
+                <div class="heading-icon cyan">⌗</div>
+                <div>
+                    <span class="card-kicker">TOPIC MANAGEMENT</span>
+                    <h2>Quản lý Topic</h2>
+                </div>
+            </div>
 
             <form id="subscribe-form">
                 <div class="form-group">
-                    <label for="subscribe-topic">Topic</label>
-                    <input type="text" id="subscribe-topic" placeholder="Nhập Topic cần đăng ký">
+                    <label for="subscribe-topic">Topic muốn theo dõi</label>
+                    <input type="text" id="subscribe-topic"
+                        placeholder="sensor/temperature">
                 </div>
 
                 <div class="button-group">
-                    <button type="submit">Subscribe</button>
-                    <button type="button" id="unsubscribe-btn">Unsubscribe</button>
+                    <button type="submit" class="btn-primary">＋ Subscribe</button>
+                    <button type="button" id="unsubscribe-btn" class="btn-secondary">
+                        Unsubscribe
+                    </button>
                 </div>
             </form>
 
-            <!-- Danh sách các Topic đã đăng ký -->
             <div class="topic-list">
-                <h3>Danh sách Topic</h3>
+                <div class="subheading">
+                    <h3>Topic đang đăng ký</h3>
+                    <span class="mini-label">SUBSCRIBED</span>
+                </div>
+
                 <ul id="subscribed-topics">
                     <li class="empty-state">Chưa có Topic nào</li>
                 </ul>
             </div>
         </section>
 
-        <!-- Khu vực gửi dữ liệu lên MQTT Broker -->
+        <!-- PUBLISH -->
         <section class="card">
-            <h2>Gửi dữ liệu (Publish)</h2>
+            <div class="card-heading">
+                <div class="heading-icon orange">⇧</div>
+                <div>
+                    <span class="card-kicker">MESSAGE PUBLISHER</span>
+                    <h2>Gửi dữ liệu</h2>
+                </div>
+            </div>
 
             <form id="publish-form">
                 <div class="form-group">
-                    <label for="publish-topic">Topic</label>
-                    <input type="text" id="publish-topic" placeholder="Nhập Topic gửi dữ liệu" required>
+                    <label for="publish-topic">Destination Topic</label>
+                    <input type="text" id="publish-topic"
+                        placeholder="device/command" required>
                 </div>
 
                 <div class="form-group">
-                    <label for="publish-payload">Message</label>
-                    <textarea id="publish-payload" placeholder="Nhập nội dung cần gửi"></textarea>
+                    <label for="publish-payload">Message Payload</label>
+                    <textarea id="publish-payload"
+                        placeholder='Nhập nội dung hoặc JSON, ví dụ: {"led": true}'></textarea>
                 </div>
 
-                <div class="form-group">
-                    <label for="publish-qos">QoS</label>
-                    <select id="publish-qos">
-                        <option value="0">QoS 0</option>
-                        <option value="1">QoS 1</option>
-                        <option value="2">QoS 2</option>
-                    </select>
+                <div class="form-grid publish-options">
+                    <div class="form-group">
+                        <label for="publish-qos">Quality of Service</label>
+                        <select id="publish-qos">
+                            <option value="0">QoS 0 · At most once</option>
+                            <option value="1">QoS 1 · At least once</option>
+                            <option value="2">QoS 2 · Exactly once</option>
+                        </select>
+                    </div>
+
+                    <label class="check-row retain-check">
+                        <input type="checkbox" id="publish-retain">
+                        <span class="custom-check"></span>
+                        <span>Retain Message</span>
+                    </label>
                 </div>
 
-                <div class="form-group checkbox-group">
-                    <input type="checkbox" id="publish-retain">
-                    <label for="publish-retain">Retain Message</label>
-                </div>
-
-                <button type="submit">Publish</button>
+                <button type="submit" class="btn-primary publish-button">
+                    ⇧ Publish Message
+                </button>
             </form>
         </section>
 
-        <!-- Khu vực hiển thị các tin nhắn nhận được -->
-        <section class="card">
+        <!-- TIN NHẮN -->
+        <section class="card messages-card">
             <div class="section-header">
-                <h2>Tin nhắn nhận được</h2>
-                <button type="button" id="clear-messages">Xóa dữ liệu</button>
+                <div class="card-heading">
+                    <div class="heading-icon green">≋</div>
+                    <div>
+                        <span class="card-kicker">INCOMING STREAM</span>
+                        <h2>Tin nhắn nhận được</h2>
+                    </div>
+                </div>
+
+                <button type="button" id="clear-messages" class="btn-danger">
+                    ⌫ Xóa dữ liệu
+                </button>
             </div>
 
-            <p id="message-count">0 messages</p>
-       <!-- Ô lọc tin nhắn theo Topic hoặc nội dung -->
-            <div class="form-group message-filter">
-                <label for="message-filter">Lọc tin nhắn</label>
-                <input type="text" id="message-filter"
-                       placeholder="Nhập Topic hoặc nội dung, ví dụ: temp, humi...">
+            <div class="message-toolbar">
+                <p id="message-count"><strong>0</strong> messages received</p>
+
+                <div class="form-group message-filter">
+                    <label class="sr-only" for="message-filter">Lọc tin nhắn</label>
+                    <span class="search-icon">⌕</span>
+                    <input type="text" id="message-filter"
+                        placeholder="Lọc theo Topic hoặc nội dung...">
+                </div>
             </div>
+
             <div class="table-container">
                 <table>
                     <thead>
                         <tr>
-                            <th>Thời gian</th>
-                            <th>Topic</th>
-                            <th>Message</th>
-                            <th>QoS</th>
-                            <th>Retain</th>
+                            <th>THỜI GIAN</th>
+                            <th>TOPIC</th>
+                            <th>MESSAGE PAYLOAD</th>
+                            <th>QOS</th>
+                            <th>RETAIN</th>
                         </tr>
                     </thead>
 
@@ -162,22 +241,32 @@
             </div>
         </section>
 
-        <!-- Khu vực ghi lại các hoạt động của hệ thống -->
-        <section class="card">
-            <h2>Lịch sử hoạt động</h2>
+        <!-- LỊCH SỬ -->
+        <section class="card activity-card">
+            <div class="card-heading">
+                <div class="heading-icon pink">◷</div>
+                <div>
+                    <span class="card-kicker">SYSTEM EVENTS</span>
+                    <h2>Lịch sử hoạt động</h2>
+                </div>
+            </div>
 
             <div id="activity-log">
                 <p class="empty-state">Chưa có hoạt động nào</p>
             </div>
         </section>
 
-    </main>
+    </div>
 
-    <!-- Thư viện Socket.IO dùng để giao tiếp với Flask Server -->
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <footer class="footer">
+        <span>MQTT CONTROL CENTER</span>
+        <span>IoT • Messaging • Monitoring</span>
+    </footer>
 
-    <!-- Kết nối file JavaScript xử lý các chức năng -->
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</main>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
 
 </body>
 </html>
