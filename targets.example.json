@@ -1,0 +1,20 @@
+{
+  "agent": "pc-lab",
+  "targets": [
+    {
+      "host": "192.168.1.1",
+      "name": "Router",
+      "ports": [80, 443]
+    },
+    {
+      "host": "8.8.8.8",
+      "name": "Google DNS",
+      "ports": [53]
+    },
+    {
+      "host": "example.com",
+      "name": "Website",
+      "ports": [80, 443]
+    }
+  ]
+}
