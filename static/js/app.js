@@ -21,6 +21,37 @@
     1: "At least once",
     2: "Exactly once",
   };
+  const MAX_LAN_AGENTS = 20;
+  const MAX_LAN_DEVICES = 200;
+  const MAX_LAN_EVENTS = 100;
+  const LAN_EVENT_TYPES = new Set([
+    "agent_started",
+    "device_down",
+    "device_up",
+    "new_device",
+    "port_opened",
+    "port_closed",
+  ]);
+  const LAN_SEVERITIES = new Set(["info", "warning", "critical"]);
+  const LAN_EVENT_LABELS = {
+    agent_started: "Agent khởi động",
+    device_down: "Mất kết nối",
+    device_up: "Kết nối lại",
+    new_device: "Thiết bị lạ",
+    port_opened: "Cổng mở",
+    port_closed: "Cổng đóng",
+  };
+  const LAN_SEVERITY_LABELS = {
+    info: "THÔNG TIN",
+    warning: "CẢNH BÁO",
+    critical: "NGHIÊM TRỌNG",
+  };
+  const LAN_EVENT_TOAST_TYPES = {
+    device_down: "error",
+    new_device: "warning",
+    port_opened: "warning",
+    device_up: "success",
+  };
 
   const els = {
     themeToggle: document.getElementById("theme-toggle"),
@@ -67,6 +98,21 @@
     exportCsv: document.getElementById("export-csv"),
     clearMessages: document.getElementById("clear-messages"),
     toastContainer: document.getElementById("toast-container"),
+    lanmonPrefix: document.getElementById("lanmon-prefix"),
+    lanmonSubscribe: document.getElementById("lanmon-subscribe"),
+    lanBrokerWarning: document.getElementById("lanmon-broker-warning"),
+    devTotal: document.getElementById("dev-total"),
+    devOnline: document.getElementById("dev-online"),
+    devOffline: document.getElementById("dev-offline"),
+    devStale: document.getElementById("dev-stale"),
+    devLatencyAvg: document.getElementById("dev-latency-avg"),
+    agentList: document.getElementById("agent-list"),
+    devicesBody: document.getElementById("devices-body"),
+    devicesEmpty: document.getElementById("devices-empty"),
+    eventList: document.getElementById("event-list"),
+    eventCount: document.getElementById("event-count"),
+    eventEmpty: document.getElementById("event-empty"),
+    clearEvents: document.getElementById("clear-events"),
   };
 
   const state = {
@@ -105,18 +151,34 @@
   let renderScheduled = false;
   let highlightLast = false;
 
+  const lanAgents = new Map();
+  const lanDevices = new Map();
+  const lanEvents = [];
+  const lanState = {
+    rows: new Map(),
+    order: "",
+    deviceLimitToasted: false,
+    agentLimitToasted: false,
+    hadBrokerConnection: false,
+  };
+
   initChart();
   initTheme();
   bindConnectionForm();
   bindSubscriptions();
   bindPublish();
   bindMessages();
+  lanBindMonitor();
   updateStatistics();
   window.setInterval(updateMessageRate, 1000);
+  window.setInterval(lanTick, 1000);
   connectSocket();
   applyConnectionState("disconnected", DEFAULT_STATUS.disconnected, false);
   renderTopics();
   renderMessages(false);
+  lanRenderAgents();
+  lanRenderDevices();
+  lanRenderEvents();
 
   // -------------------------------------------------------------------------
   // Theme
@@ -273,6 +335,14 @@
       !state.socketReady || (state.mqtt === "disconnected" && !state.reconnecting);
     els.subscribeBtn.disabled = !connected;
     els.publishBtn.disabled = !connected;
+    els.lanmonSubscribe.disabled = !connected;
+
+    if (connected) {
+      lanState.hadBrokerConnection = true;
+      els.lanBrokerWarning.hidden = true;
+    } else {
+      els.lanBrokerWarning.hidden = !lanState.hadBrokerConnection;
+    }
 
     [els.host, els.port, els.username, els.password, els.useTls, els.togglePassword].forEach(
       (input) => {
@@ -514,6 +584,9 @@
       messages.splice(0, messages.length - MAX_MESSAGES);
     }
     scheduleRender(true);
+
+    // Keep the LAN Monitor state independent from the 200-message table.
+    lanHandleMessage(message, receivedAt);
   }
 
   function scheduleRender(animateLast) {
@@ -690,6 +763,740 @@
       }
     }
     return filterParts.length === topicParts.length;
+  }
+
+  // -------------------------------------------------------------------------
+  // LAN Monitor
+  // -------------------------------------------------------------------------
+  function lanBindMonitor() {
+    els.lanmonSubscribe.addEventListener("click", lanSubscribe);
+    els.lanmonPrefix.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        lanSubscribe();
+      }
+    });
+    els.clearEvents.addEventListener("click", lanClearEvents);
+  }
+
+  function lanSubscribe() {
+    if (state.mqtt !== "connected") {
+      toast("Chỉ có thể theo dõi LAN Monitor khi đã kết nối broker.", "warning");
+      return;
+    }
+
+    const prefix = els.lanmonPrefix.value.trim();
+    if (!prefix) {
+      toast("Vui lòng nhập prefix LAN Monitor.", "warning");
+      els.lanmonPrefix.focus();
+      return;
+    }
+    if (/[+#/]/.test(prefix)) {
+      toast("Prefix không được chứa ký tự +, # hoặc /.", "warning");
+      els.lanmonPrefix.focus();
+      return;
+    }
+
+    const topic = `${prefix}/#`;
+    if (topics.has(topic)) {
+      toast(`Đã theo dõi prefix ${prefix}.`, "info");
+      return;
+    }
+
+    // Reuse the existing subscribe path so the topic also appears in the
+    // "Topic đang theo dõi" list and is restored after a reconnect.
+    els.topicInput.value = topic;
+    subscribeCurrentTopic();
+  }
+
+  function lanGetPrefix() {
+    const prefix = els.lanmonPrefix.value.trim();
+    if (!prefix || /[+#/]/.test(prefix)) {
+      return "";
+    }
+    return prefix;
+  }
+
+  function lanEscapeRegex(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function lanHandleMessage(message, receivedAt) {
+    if (
+      !message ||
+      typeof message.topic !== "string" ||
+      typeof message.payload !== "string"
+    ) {
+      return;
+    }
+
+    try {
+      const prefix = lanGetPrefix();
+      if (!prefix) {
+        return;
+      }
+      const pattern = new RegExp(
+        `^${lanEscapeRegex(prefix)}/([^/]+)/(status|device/([^/]+)|event)$`
+      );
+      const match = pattern.exec(message.topic);
+      if (!match) {
+        return;
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(message.payload);
+      } catch (error) {
+        return;
+      }
+      if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+        return;
+      }
+
+      const agent = match[1];
+      if (payload.agent !== agent) {
+        return;
+      }
+
+      if (match[2] === "status") {
+        lanApplyStatus(agent, payload, receivedAt);
+      } else if (match[2] === "event") {
+        lanApplyEvent(agent, payload, receivedAt);
+      } else {
+        lanApplyDevice(agent, match[3], payload, receivedAt);
+      }
+    } catch (error) {
+      // Malformed external payloads must never break the dashboard.
+    }
+  }
+
+  function lanApplyStatus(agent, payload, receivedAt) {
+    if (payload.state !== "online" && payload.state !== "offline") {
+      return;
+    }
+    if (
+      payload.interval_s !== undefined &&
+      (!lanIsFiniteNumber(payload.interval_s) || payload.interval_s <= 0)
+    ) {
+      return;
+    }
+    if (
+      payload.targets !== undefined &&
+      (!lanIsFiniteNumber(payload.targets) || payload.targets < 0)
+    ) {
+      return;
+    }
+    if (payload.version !== undefined && !lanIsFiniteNumber(payload.version)) {
+      return;
+    }
+    if (payload.ts !== undefined && typeof payload.ts !== "string") {
+      return;
+    }
+
+    const existing = lanAgents.get(agent);
+    if (!existing && lanAgents.size >= MAX_LAN_AGENTS) {
+      if (!lanState.agentLimitToasted) {
+        lanState.agentLimitToasted = true;
+        toast(`Đã đạt giới hạn ${MAX_LAN_AGENTS} agent; bỏ qua agent mới.`, "warning");
+      }
+      return;
+    }
+
+    const intervalS =
+      lanIsFiniteNumber(payload.interval_s) && payload.interval_s > 0
+        ? payload.interval_s
+        : existing
+          ? existing.intervalS
+          : null;
+
+    lanAgents.set(agent, {
+      agent,
+      state: payload.state,
+      intervalS,
+      targets: lanIsFiniteNumber(payload.targets)
+        ? payload.targets
+        : existing
+          ? existing.targets
+          : null,
+      version: lanIsFiniteNumber(payload.version)
+        ? payload.version
+        : existing
+          ? existing.version
+          : null,
+      updatedMs: lanParseTimestamp(payload.ts, receivedAt),
+    });
+
+    lanRenderAgents();
+    lanRenderDevices();
+  }
+
+  function lanApplyDevice(agent, topicDeviceId, payload, receivedAt) {
+    if (typeof payload.id !== "string" || !payload.id || payload.id !== topicDeviceId) {
+      return;
+    }
+    if (typeof payload.host !== "string" || typeof payload.name !== "string") {
+      return;
+    }
+    if (typeof payload.online !== "boolean") {
+      return;
+    }
+    if (
+      !(
+        payload.latency_ms === null ||
+        (lanIsFiniteNumber(payload.latency_ms) && payload.latency_ms >= 0)
+      )
+    ) {
+      return;
+    }
+    if (
+      !lanIsFiniteNumber(payload.loss_pct) ||
+      payload.loss_pct < 0 ||
+      payload.loss_pct > 100
+    ) {
+      return;
+    }
+    if (
+      payload.ports === null ||
+      typeof payload.ports !== "object" ||
+      Array.isArray(payload.ports)
+    ) {
+      return;
+    }
+    if (!(payload.mac === null || typeof payload.mac === "string")) {
+      return;
+    }
+    if (typeof payload.known !== "boolean" || typeof payload.ts !== "string") {
+      return;
+    }
+
+    const ports = {};
+    for (const [port, isOpen] of Object.entries(payload.ports)) {
+      if (!/^\d+$/.test(port) || typeof isOpen !== "boolean") {
+        return;
+      }
+      const portNumber = Number(port);
+      if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
+        return;
+      }
+      ports[port] = isOpen;
+    }
+
+    const key = `${agent}/${topicDeviceId}`;
+    const existing = lanDevices.get(key);
+    if (!existing && lanDevices.size >= MAX_LAN_DEVICES) {
+      if (!lanState.deviceLimitToasted) {
+        lanState.deviceLimitToasted = true;
+        toast(
+          `Đã đạt giới hạn ${MAX_LAN_DEVICES} thiết bị; bỏ qua thiết bị mới.`,
+          "warning"
+        );
+      }
+      return;
+    }
+
+    const updatedMs = lanParseTimestamp(payload.ts, receivedAt);
+    if (existing && updatedMs < existing.updatedMs) {
+      return;
+    }
+
+    lanDevices.set(key, {
+      key,
+      agent,
+      id: topicDeviceId,
+      host: lanClampText(payload.host, 64),
+      name: lanClampText(payload.name, 64),
+      online: payload.online,
+      latencyMs: payload.latency_ms,
+      lossPct: payload.loss_pct,
+      ports,
+      mac: payload.mac === null ? null : lanClampText(payload.mac, 32),
+      known: payload.known,
+      updatedMs,
+      receivedAt,
+    });
+
+    lanRenderDevices();
+  }
+
+  function lanApplyEvent(agent, payload, receivedAt) {
+    if (typeof payload.type !== "string" || !LAN_EVENT_TYPES.has(payload.type)) {
+      return;
+    }
+    if (
+      typeof payload.severity !== "string" ||
+      !LAN_SEVERITIES.has(payload.severity)
+    ) {
+      return;
+    }
+    if (typeof payload.host !== "string" || typeof payload.name !== "string") {
+      return;
+    }
+    if (typeof payload.message !== "string" || typeof payload.ts !== "string") {
+      return;
+    }
+
+    const event = {
+      agent,
+      type: payload.type,
+      severity: payload.severity,
+      host: lanClampText(payload.host, 64),
+      name: lanClampText(payload.name, 64),
+      message: lanClampText(payload.message, 200),
+      tsMs: lanParseTimestamp(payload.ts, receivedAt),
+    };
+
+    lanEvents.unshift(event);
+    if (lanEvents.length > MAX_LAN_EVENTS) {
+      lanEvents.length = MAX_LAN_EVENTS;
+    }
+    lanRenderEvents();
+    lanToastEvent(event);
+  }
+
+  function lanToastEvent(event) {
+    const toastType = LAN_EVENT_TOAST_TYPES[event.type];
+    if (!toastType) {
+      return;
+    }
+    const label = LAN_EVENT_LABELS[event.type] || event.type;
+    const device = event.name || event.host || event.agent;
+    const message = event.message ? `: ${event.message}` : "";
+    toast(`${label} — ${device} (${event.agent})${message}`, toastType);
+  }
+
+  function lanClearEvents() {
+    if (lanEvents.length === 0) {
+      return;
+    }
+    lanEvents.length = 0;
+    lanRenderEvents();
+    toast("Đã xóa nhật ký cảnh báo.", "info");
+  }
+
+  function lanRenderEvents() {
+    els.eventCount.textContent = String(lanEvents.length);
+    els.eventCount.title = `Đang lưu ${lanEvents.length}/${MAX_LAN_EVENTS} cảnh báo`;
+    els.eventEmpty.hidden = lanEvents.length > 0;
+
+    const fragment = document.createDocumentFragment();
+    lanEvents.forEach((event) => {
+      fragment.append(lanCreateEventRow(event));
+    });
+    els.eventList.replaceChildren(fragment);
+  }
+
+  function lanCreateEventRow(event) {
+    const item = document.createElement("li");
+    item.className = "lanmon-event";
+
+    const time = document.createElement("span");
+    time.className = "lanmon-event-time";
+    time.textContent = lanFormatClock(event.tsMs);
+
+    const main = document.createElement("div");
+    main.className = "lanmon-event-main";
+
+    const severity = document.createElement("span");
+    severity.className = `lanmon-event-severity lanmon-event-severity--${event.severity}`;
+    severity.textContent =
+      LAN_SEVERITY_LABELS[event.severity] || event.severity.toUpperCase();
+
+    const type = document.createElement("span");
+    type.className = "lanmon-event-type";
+    type.textContent = LAN_EVENT_LABELS[event.type] || event.type;
+
+    const device = document.createElement("span");
+    device.className = "lanmon-event-device";
+    device.textContent = event.name || event.host || "—";
+    if (event.host && event.name && event.host !== event.name) {
+      device.title = event.host;
+    }
+
+    const agent = document.createElement("span");
+    agent.className = "lanmon-event-agent";
+    agent.textContent = event.agent;
+
+    const message = document.createElement("p");
+    message.className = "lanmon-event-message";
+    message.textContent = event.message || "—";
+
+    main.append(severity, type, device, agent);
+    item.append(time, main, message);
+    return item;
+  }
+
+  function lanRenderAgents() {
+    const agents = Array.from(lanAgents.values()).sort((a, b) =>
+      a.agent.localeCompare(b.agent, "vi", { sensitivity: "base" })
+    );
+    const fragment = document.createDocumentFragment();
+
+    agents.forEach((agent) => {
+      const chip = document.createElement("span");
+      chip.className = "lanmon-agent-chip";
+      if (agent.state === "offline") {
+        chip.classList.add("is-offline");
+      }
+      chip.dataset.agent = agent.agent;
+
+      const dot = document.createElement("span");
+      dot.className = "lanmon-agent-dot";
+      dot.setAttribute("aria-hidden", "true");
+
+      const name = document.createElement("span");
+      name.className = "lanmon-agent-name";
+      name.textContent = agent.agent;
+
+      const stateText = document.createElement("span");
+      stateText.className = "lanmon-agent-state";
+      stateText.textContent = agent.state === "offline" ? "offline" : "online";
+
+      chip.append(dot, name, stateText);
+
+      if (lanIsFiniteNumber(agent.intervalS) && agent.intervalS > 0) {
+        const interval = document.createElement("span");
+        interval.className = "lanmon-agent-interval";
+        interval.textContent = `mỗi ${lanFormatNumber(agent.intervalS)}s`;
+        chip.append(interval);
+      }
+
+      const targetsText = lanIsFiniteNumber(agent.targets)
+        ? `${agent.targets} thiết bị`
+        : "";
+      chip.title = `${agent.agent}: ${stateText.textContent}${
+        targetsText ? `, ${targetsText}` : ""
+      }`;
+      fragment.append(chip);
+    });
+
+    els.agentList.replaceChildren(fragment);
+  }
+
+  function lanTick() {
+    lanRenderDevices();
+  }
+
+  function lanRenderDevices(now = Date.now()) {
+    const items = [];
+    lanDevices.forEach((device) => {
+      items.push({
+        device,
+        status: lanDeviceStatus(device, now),
+        updatedText: lanRelativeTime(device.updatedMs, now),
+      });
+    });
+    items.sort(lanCompareDevices);
+
+    let online = 0;
+    let offline = 0;
+    let stale = 0;
+    let latencySum = 0;
+    let latencyCount = 0;
+
+    items.forEach(({ device, status }) => {
+      if (status.key === "online") {
+        online += 1;
+        if (lanIsFiniteNumber(device.latencyMs)) {
+          latencySum += device.latencyMs;
+          latencyCount += 1;
+        }
+      } else if (status.key === "offline") {
+        offline += 1;
+      } else {
+        stale += 1;
+      }
+    });
+
+    els.devTotal.textContent = String(items.length);
+    els.devOnline.textContent = String(online);
+    els.devOffline.textContent = String(offline);
+    els.devStale.textContent = String(stale);
+    els.devLatencyAvg.textContent =
+      latencyCount > 0 ? `${(latencySum / latencyCount).toFixed(1)} ms` : "—";
+    els.devicesEmpty.hidden = items.length > 0;
+
+    const seen = new Set();
+    items.forEach(({ device, status, updatedText }) => {
+      let entry = lanState.rows.get(device.key);
+      if (!entry) {
+        entry = lanCreateDeviceRow(device);
+        lanState.rows.set(device.key, entry);
+      }
+      lanUpdateDeviceRow(entry, device, status, updatedText);
+      seen.add(device.key);
+    });
+
+    lanState.rows.forEach((entry, key) => {
+      if (!seen.has(key)) {
+        entry.row.remove();
+        lanState.rows.delete(key);
+      }
+    });
+
+    const order = items.map((item) => item.device.key).join("\u0000");
+    if (order !== lanState.order) {
+      items.forEach((item) => {
+        const entry = lanState.rows.get(item.device.key);
+        if (entry) {
+          els.devicesBody.append(entry.row);
+        }
+      });
+      lanState.order = order;
+    }
+  }
+
+  function lanCreateDeviceRow(device) {
+    const row = document.createElement("tr");
+    row.dataset.key = device.key;
+
+    const statusCell = document.createElement("td");
+    const status = document.createElement("span");
+    status.className = "lan-status";
+    const statusDot = document.createElement("span");
+    statusDot.className = "lan-status-dot";
+    statusDot.setAttribute("aria-hidden", "true");
+    const statusText = document.createElement("span");
+    statusText.className = "lan-status-text";
+    status.append(statusDot, statusText);
+    statusCell.append(status);
+
+    const deviceCell = document.createElement("td");
+    const title = document.createElement("div");
+    title.className = "lan-device-title";
+    const name = document.createElement("span");
+    name.className = "lan-device-name";
+    const unknown = document.createElement("span");
+    unknown.className = "lan-device-unknown";
+    unknown.textContent = "LẠ";
+    unknown.hidden = device.known;
+    title.append(name, unknown);
+    const host = document.createElement("span");
+    host.className = "lan-device-host";
+    const mac = document.createElement("span");
+    mac.className = "lan-device-mac";
+    deviceCell.append(title, host, mac);
+
+    const agentCell = document.createElement("td");
+    const agent = document.createElement("span");
+    agent.className = "lan-device-agent";
+    agentCell.append(agent);
+
+    const latencyCell = document.createElement("td");
+    const latency = document.createElement("span");
+    latency.className = "lan-metric";
+    latencyCell.append(latency);
+
+    const lossCell = document.createElement("td");
+    const loss = document.createElement("span");
+    loss.className = "lan-metric";
+    lossCell.append(loss);
+
+    const portsCell = document.createElement("td");
+    const ports = document.createElement("span");
+    ports.className = "lan-ports";
+    portsCell.append(ports);
+
+    const updatedCell = document.createElement("td");
+    const updated = document.createElement("span");
+    updated.className = "lan-updated";
+    updatedCell.append(updated);
+
+    row.append(
+      statusCell,
+      deviceCell,
+      agentCell,
+      latencyCell,
+      lossCell,
+      portsCell,
+      updatedCell
+    );
+
+    return {
+      row,
+      status,
+      statusText,
+      name,
+      host,
+      mac,
+      unknown,
+      agent,
+      latency,
+      loss,
+      ports,
+      updated,
+      portsKey: null,
+      statusKey: "",
+    };
+  }
+
+  function lanUpdateDeviceRow(entry, device, status, updatedText) {
+    if (entry.statusKey !== status.key) {
+      entry.statusKey = status.key;
+      entry.status.className = `lan-status lan-status--${status.key}`;
+      entry.statusText.textContent = status.label;
+      entry.status.title = status.label;
+    }
+
+    lanSetText(entry.name, device.name || device.host || "—");
+    lanSetText(entry.host, device.host || "—");
+
+    if (device.mac) {
+      entry.mac.hidden = false;
+      lanSetText(entry.mac, `MAC ${device.mac}`);
+    } else {
+      entry.mac.hidden = true;
+    }
+
+    entry.unknown.hidden = device.known;
+    lanSetText(entry.agent, device.agent);
+    lanSetText(entry.latency, lanFormatLatency(device.latencyMs));
+    lanSetText(entry.loss, `${lanFormatNumber(device.lossPct)}%`);
+
+    const portsKey = lanPortsKey(device.ports);
+    if (portsKey !== entry.portsKey) {
+      entry.portsKey = portsKey;
+      lanRenderPorts(entry.ports, device.ports);
+    }
+
+    lanSetText(entry.updated, updatedText);
+    entry.updated.title = fullTimeFormatter.format(new Date(device.updatedMs));
+  }
+
+  function lanRenderPorts(container, ports) {
+    const keys = Object.keys(ports).sort((a, b) => Number(a) - Number(b));
+    container.replaceChildren();
+
+    if (keys.length === 0) {
+      container.textContent = "—";
+      container.classList.add("lan-ports--empty");
+      return;
+    }
+
+    container.classList.remove("lan-ports--empty");
+    keys.forEach((port) => {
+      const isOpen = ports[port];
+      const chip = document.createElement("span");
+      chip.className = isOpen ? "lan-port lan-port--open" : "lan-port lan-port--closed";
+      chip.textContent = `${port} ${isOpen ? "mở" : "đóng"}`;
+      container.append(chip);
+    });
+  }
+
+  function lanPortsKey(ports) {
+    return Object.keys(ports)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((port) => `${port}:${ports[port] ? "1" : "0"}`)
+      .join("|");
+  }
+
+  function lanDeviceStatus(device, now) {
+    const agent = lanAgents.get(device.agent);
+    if (agent && agent.state === "offline") {
+      return { key: "agent-offline", label: "Agent offline" };
+    }
+
+    let threshold = 15;
+    if (agent && lanIsFiniteNumber(agent.intervalS) && agent.intervalS > 0) {
+      threshold = Math.max(3 * agent.intervalS, 10);
+    }
+    if (now - device.updatedMs > threshold * 1000) {
+      return { key: "stale", label: "Mất tín hiệu" };
+    }
+    if (device.online) {
+      return { key: "online", label: "Online" };
+    }
+    return { key: "offline", label: "Offline" };
+  }
+
+  function lanCompareDevices(a, b) {
+    const rank = (item) => {
+      if (item.status.key === "offline") {
+        return 0;
+      }
+      if (item.status.key === "stale" || item.status.key === "agent-offline") {
+        return 1;
+      }
+      if (!item.device.known) {
+        return 2;
+      }
+      return 3;
+    };
+
+    const rankDiff = rank(a) - rank(b);
+    if (rankDiff !== 0) {
+      return rankDiff;
+    }
+
+    const nameA = (a.device.name || a.device.host || "").toLocaleLowerCase("vi");
+    const nameB = (b.device.name || b.device.host || "").toLocaleLowerCase("vi");
+    const nameDiff = nameA.localeCompare(nameB, "vi", { sensitivity: "base" });
+    if (nameDiff !== 0) {
+      return nameDiff;
+    }
+
+    const agentDiff = a.device.agent.localeCompare(b.device.agent, "vi", {
+      sensitivity: "base",
+    });
+    if (agentDiff !== 0) {
+      return agentDiff;
+    }
+    return a.device.key.localeCompare(b.device.key, "vi", { sensitivity: "base" });
+  }
+
+  function lanRelativeTime(timestampMs, now) {
+    if (!lanIsFiniteNumber(timestampMs)) {
+      return "—";
+    }
+    const seconds = Math.max(0, Math.floor((now - timestampMs) / 1000));
+    return `${seconds} giây trước`;
+  }
+
+  function lanFormatClock(timestampMs) {
+    const date = new Date(timestampMs);
+    if (Number.isNaN(date.getTime())) {
+      return "--:--:--";
+    }
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+      date.getSeconds()
+    )}`;
+  }
+
+  function lanFormatLatency(value) {
+    return lanIsFiniteNumber(value) ? `${value.toFixed(1)} ms` : "—";
+  }
+
+  function lanFormatNumber(value) {
+    if (!lanIsFiniteNumber(value)) {
+      return "—";
+    }
+    if (Number.isInteger(value)) {
+      return String(value);
+    }
+    return value.toFixed(1).replace(/\.0$/, "");
+  }
+
+  function lanSetText(node, text) {
+    const next = String(text);
+    if (node.textContent !== next) {
+      node.textContent = next;
+    }
+  }
+
+  function lanClampText(value, maxLength) {
+    return value.length > maxLength ? value.slice(0, maxLength) : value;
+  }
+
+  function lanParseTimestamp(value, fallback) {
+    if (typeof value !== "string") {
+      return fallback;
+    }
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function lanIsFiniteNumber(value) {
+    return typeof value === "number" && Number.isFinite(value);
   }
 
   // -------------------------------------------------------------------------

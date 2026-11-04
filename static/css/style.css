@@ -27,6 +27,14 @@
   --danger: #b3442e;
   --status-gray: #8b8d83;
 
+  --device-online: #2f7d4f;
+  --device-offline: #b3442e;
+  --device-stale: #a66a00;
+  --device-agent-offline: #8b8d83;
+  --event-info: #1f5f99;
+  --event-warning: #a66a00;
+  --event-critical: #b3442e;
+
   --focus: #1f5f99;
   --scroll-thumb: #c7c3b8;
   --chart-series-1: #2563eb;
@@ -62,6 +70,14 @@
   --warning: #e0ad4a;
   --danger: #ef8a72;
   --status-gray: #7d8075;
+
+  --device-online: #5ec98a;
+  --device-offline: #ef8a72;
+  --device-stale: #e0ad4a;
+  --device-agent-offline: #7d8075;
+  --event-info: #7cb3e0;
+  --event-warning: #e0ad4a;
+  --event-critical: #ef8a72;
 
   --focus: #7cb3e0;
   --scroll-thumb: #474a41;
@@ -475,6 +491,562 @@ kbd {
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------------
+   LAN Monitor devices and events
+   -------------------------------------------------------------------------- */
+.devices-section {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  min-width: 0;
+  height: clamp(220px, 30vh, 300px);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.devices-section [hidden] {
+  display: none !important;
+}
+
+.devices-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 14px;
+  flex: none;
+  min-width: 0;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+
+.devices-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.devices-heading .section-title {
+  white-space: nowrap;
+}
+
+.lanmon-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lanmon-prefix-field {
+  flex: 0 1 180px;
+}
+
+.lanmon-prefix-field .input {
+  min-height: 30px;
+}
+
+.lanmon-warning {
+  flex: none;
+  margin: 0;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--warning);
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.lanmon-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  flex: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--border);
+}
+
+.lanmon-kpi {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 9px;
+  background: var(--surface);
+}
+
+.lanmon-kpi-label {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lanmon-kpi-value {
+  flex: none;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+#dev-online {
+  color: var(--device-online);
+}
+
+#dev-offline {
+  color: var(--device-offline);
+}
+
+#dev-stale {
+  color: var(--device-stale);
+}
+
+.lanmon-agents-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  min-width: 0;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lanmon-agents-label {
+  flex: none;
+  color: var(--text-subtle);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.lanmon-agent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lanmon-agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.lanmon-agent-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--device-online);
+}
+
+.lanmon-agent-name {
+  min-width: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.lanmon-agent-state {
+  flex: none;
+  color: var(--device-online);
+  font-weight: 600;
+}
+
+.lanmon-agent-interval {
+  flex: none;
+  color: var(--text-subtle);
+}
+
+.lanmon-agent-chip.is-offline {
+  border-color: var(--border-strong);
+}
+
+.lanmon-agent-chip.is-offline .lanmon-agent-dot {
+  background: var(--device-agent-offline);
+}
+
+.lanmon-agent-chip.is-offline .lanmon-agent-state {
+  color: var(--device-agent-offline);
+}
+
+.lanmon-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 32%);
+  flex: 1;
+  min-height: 0;
+}
+
+.lanmon-devices-panel,
+.lanmon-events-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.lanmon-events-panel {
+  border-left: 1px solid var(--border);
+}
+
+.lanmon-subheader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+  min-height: 28px;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+
+.lanmon-subheading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lanmon-subtitle {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.lanmon-table-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+}
+
+.lanmon-table-wrap:focus-visible {
+  outline-offset: -2px;
+}
+
+.lanmon-devices-table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.lanmon-devices-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lanmon-devices-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.lanmon-devices-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.lanmon-devices-table tbody tr:hover td {
+  background: var(--surface-soft);
+}
+
+.lanmon-devices-table th:nth-child(1),
+.lanmon-devices-table td:nth-child(1) {
+  width: 104px;
+}
+
+.lanmon-devices-table th:nth-child(2),
+.lanmon-devices-table td:nth-child(2) {
+  width: 190px;
+}
+
+.lanmon-devices-table th:nth-child(3),
+.lanmon-devices-table td:nth-child(3) {
+  width: 82px;
+}
+
+.lanmon-devices-table th:nth-child(4),
+.lanmon-devices-table td:nth-child(4) {
+  width: 70px;
+}
+
+.lanmon-devices-table th:nth-child(5),
+.lanmon-devices-table td:nth-child(5) {
+  width: 62px;
+}
+
+.lanmon-devices-table th:nth-child(6),
+.lanmon-devices-table td:nth-child(6) {
+  width: 112px;
+}
+
+.lanmon-devices-table th:nth-child(7),
+.lanmon-devices-table td:nth-child(7) {
+  width: 82px;
+}
+
+.lan-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.lan-status-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.lan-status--online {
+  color: var(--device-online);
+}
+
+.lan-status--offline {
+  color: var(--device-offline);
+}
+
+.lan-status--stale {
+  color: var(--device-stale);
+}
+
+.lan-status--agent-offline {
+  color: var(--device-agent-offline);
+}
+
+.lan-device-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lan-device-name {
+  min-width: 0;
+  color: var(--text);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.lan-device-unknown {
+  flex: none;
+  padding: 0 3px;
+  border: 1px solid var(--device-stale);
+  border-radius: var(--radius);
+  color: var(--device-stale);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.lan-device-host,
+.lan-device-mac {
+  display: block;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.lan-device-mac {
+  color: var(--text-muted);
+}
+
+.lan-device-agent {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.lan-metric {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lan-updated {
+  color: var(--text-subtle);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.lan-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lan-port {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.lan-port--open {
+  border-color: var(--device-online);
+  color: var(--device-online);
+  font-weight: 600;
+}
+
+.lan-port--closed {
+  opacity: 0.72;
+}
+
+.lanmon-event-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.lanmon-event-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lanmon-event {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  column-gap: 6px;
+  row-gap: 1px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lanmon-event:last-child {
+  border-bottom: 0;
+}
+
+.lanmon-event-time {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+}
+
+.lanmon-event-main {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 5px;
+  min-width: 0;
+}
+
+.lanmon-event-severity {
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.lanmon-event-severity--critical {
+  color: var(--event-critical);
+}
+
+.lanmon-event-severity--warning {
+  color: var(--event-warning);
+}
+
+.lanmon-event-severity--info {
+  color: var(--event-info);
+}
+
+.lanmon-event-type {
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.lanmon-event-device {
+  color: var(--text-muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.lanmon-event-agent {
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  overflow-wrap: anywhere;
+}
+
+.lanmon-event-message {
+  grid-column: 2;
+  grid-row: 2;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.lanmon-empty {
+  padding: 12px 14px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.lanmon-table-wrap .lanmon-empty {
+  min-height: 84px;
 }
 
 .chart-card {
@@ -1722,6 +2294,74 @@ input[type="number"]::-webkit-outer-spin-button {
     right: 12px;
     bottom: 12px;
     width: calc(100vw - 24px);
+  }
+}
+
+@media (max-width: 1080px) {
+  .devices-section {
+    height: auto;
+  }
+
+  .lanmon-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lanmon-events-panel {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .lanmon-table-wrap {
+    max-height: 280px;
+  }
+
+  .lanmon-event-scroll {
+    max-height: 220px;
+  }
+}
+
+@media (max-width: 720px) {
+  .devices-header {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .devices-heading {
+    width: 100%;
+  }
+
+  .lanmon-controls {
+    width: 100%;
+  }
+
+  .lanmon-prefix-field {
+    flex: 1 1 150px;
+  }
+
+  .lanmon-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lanmon-agents-wrap {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 400px) {
+  .lanmon-controls {
+    flex-wrap: wrap;
+  }
+
+  .lanmon-prefix-field {
+    flex: 1 1 100%;
+  }
+
+  #lanmon-subscribe {
+    width: 100%;
+  }
+
+  .lanmon-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -6,7 +6,7 @@
   <meta name="description" content="MQTT Dashboard - kết nối, subscribe và publish MQTT theo thời gian thực.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f2f1ec">
-  <title>MQTT Dashboard</title>
+  <title>LAN Monitor / MQTT</title>
   <script>
     (function () {
       try {
@@ -36,9 +36,9 @@
   <header class="app-header">
     <div class="header-inner">
       <h1 class="brand-title">
-        <span class="brand-product">MQTT</span>
+        <span class="brand-product">LAN Monitor</span>
         <span class="brand-slash" aria-hidden="true">/</span>
-        <span class="brand-name">Dashboard</span>
+        <span class="brand-name">MQTT</span>
       </h1>
       <div class="header-actions">
         <button class="icon-btn theme-toggle" id="theme-toggle" type="button" aria-label="Chuyển sang chế độ tối" aria-pressed="false" title="Chuyển giao diện sáng/tối">
@@ -116,6 +116,96 @@
 
     <div class="workspace">
       <div class="primary-pane">
+        <section class="devices-section" id="devices-section" aria-labelledby="devices-title">
+          <div class="devices-header">
+            <div class="devices-heading">
+              <h2 class="section-title" id="devices-title">Thiết bị mạng</h2>
+            </div>
+            <div class="lanmon-controls">
+              <div class="field lanmon-prefix-field">
+                <label for="lanmon-prefix">Prefix LAN Monitor</label>
+                <input class="input input--mono" id="lanmon-prefix" type="text" value="lanmon" placeholder="lanmon" autocomplete="off" spellcheck="false">
+              </div>
+              <button class="btn btn-primary btn-sm" id="lanmon-subscribe" type="button" disabled>Theo dõi LAN Monitor</button>
+            </div>
+          </div>
+
+          <p class="lanmon-warning" id="lanmon-broker-warning" role="status" hidden>Đang ngắt kết nối broker, dữ liệu có thể đã cũ</p>
+
+          <div class="lanmon-kpis" aria-label="Chỉ số thiết bị mạng">
+            <div class="lanmon-kpi">
+              <span class="lanmon-kpi-label">Tổng thiết bị</span>
+              <strong class="lanmon-kpi-value" id="dev-total">0</strong>
+            </div>
+            <div class="lanmon-kpi">
+              <span class="lanmon-kpi-label">Online</span>
+              <strong class="lanmon-kpi-value" id="dev-online">0</strong>
+            </div>
+            <div class="lanmon-kpi">
+              <span class="lanmon-kpi-label">Offline</span>
+              <strong class="lanmon-kpi-value" id="dev-offline">0</strong>
+            </div>
+            <div class="lanmon-kpi">
+              <span class="lanmon-kpi-label">Mất tín hiệu</span>
+              <strong class="lanmon-kpi-value" id="dev-stale">0</strong>
+            </div>
+            <div class="lanmon-kpi">
+              <span class="lanmon-kpi-label">Độ trễ TB</span>
+              <strong class="lanmon-kpi-value" id="dev-latency-avg">—</strong>
+            </div>
+          </div>
+
+          <div class="lanmon-agents-wrap">
+            <span class="lanmon-agents-label">Agent</span>
+            <div class="lanmon-agent-list" id="agent-list" aria-label="Danh sách agent"></div>
+          </div>
+
+          <div class="lanmon-panels">
+            <div class="lanmon-devices-panel">
+              <div class="lanmon-subheader">
+                <h3 class="lanmon-subtitle">Danh sách thiết bị</h3>
+              </div>
+              <div class="lanmon-table-wrap" id="devices-scroll" tabindex="0" role="region" aria-label="Danh sách thiết bị mạng">
+                <table class="lanmon-devices-table">
+                  <caption class="sr-only">Thiết bị mạng theo agent</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Trạng thái</th>
+                      <th scope="col">Thiết bị</th>
+                      <th scope="col">Agent</th>
+                      <th scope="col">Độ trễ</th>
+                      <th scope="col">Mất gói</th>
+                      <th scope="col">Cổng</th>
+                      <th scope="col">Cập nhật</th>
+                    </tr>
+                  </thead>
+                  <tbody id="devices-body"></tbody>
+                </table>
+                <div class="empty-state lanmon-empty" id="devices-empty">
+                  <span>Chưa có thiết bị. Kết nối broker, bấm 'Theo dõi LAN Monitor' rồi chạy network_agent.py.</span>
+                </div>
+              </div>
+            </div>
+
+            <section class="lanmon-events-panel" aria-labelledby="events-title">
+              <div class="lanmon-subheader">
+                <div class="lanmon-subheading">
+                  <h3 class="lanmon-subtitle" id="events-title">Nhật ký cảnh báo</h3>
+                  <span class="count-badge" id="event-count" title="Số cảnh báo đang lưu">0</span>
+                </div>
+                <button class="btn btn-quiet btn-sm" id="clear-events" type="button">Xóa nhật ký</button>
+              </div>
+              <div class="lanmon-event-scroll">
+                <ol class="lanmon-event-list" id="event-list" aria-live="polite"></ol>
+                <div class="empty-state lanmon-empty" id="event-empty">
+                  <strong>Chưa có cảnh báo</strong>
+                  <span>Sự kiện từ agent sẽ xuất hiện ở đây.</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
         <section class="stats-row" aria-label="Thống kê tin nhắn">
           <div class="stat-item">
             <span class="stat-label">Tổng tin nhắn</span>
