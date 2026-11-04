@@ -11,6 +11,7 @@ Press Ctrl+C to stop.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import random
 import threading
@@ -65,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Publish retained messages",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Also publish temperature and humidity as a JSON object",
+    )
     return parser
 
 
@@ -80,6 +86,7 @@ def main() -> None:
         raise SystemExit("--prefix không được để trống.")
     topic_temp = f"{prefix}/sensor/temp"
     topic_humi = f"{prefix}/sensor/humi"
+    topic_json = f"{prefix}/sensor/json"
 
     logging.basicConfig(
         level=logging.INFO,
@@ -143,15 +150,32 @@ def main() -> None:
                 qos=args.qos,
                 retain=args.retain,
             )
+            json_info = None
+            if args.json:
+                json_info = client.publish(
+                    topic_json,
+                    json.dumps({"temperature": temperature, "humidity": humidity}),
+                    qos=args.qos,
+                    retain=args.retain,
+                )
             if (
                 temp_info.rc != mqtt.MQTT_ERR_SUCCESS
                 or humi_info.rc != mqtt.MQTT_ERR_SUCCESS
+                or (json_info is not None and json_info.rc != mqtt.MQTT_ERR_SUCCESS)
             ):
-                logger.error(
-                    "Publish failed (temp rc=%s, humidity rc=%s)",
-                    temp_info.rc,
-                    humi_info.rc,
-                )
+                if json_info is None:
+                    logger.error(
+                        "Publish failed (temp rc=%s, humidity rc=%s)",
+                        temp_info.rc,
+                        humi_info.rc,
+                    )
+                else:
+                    logger.error(
+                        "Publish failed (temp rc=%s, humidity rc=%s, json rc=%s)",
+                        temp_info.rc,
+                        humi_info.rc,
+                        json_info.rc,
+                    )
             sent += 1
             logger.info(
                 "Sample %d: %s=%.2f, %s=%.2f",

@@ -115,10 +115,42 @@
     </section>
 
     <div class="workspace">
+      <div class="primary-pane">
+        <section class="stats-row" aria-label="Thống kê tin nhắn">
+          <div class="stat-item">
+            <span class="stat-label">Tổng tin nhắn</span>
+            <strong class="stat-value" id="stats-total">0</strong>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Tin/giây</span>
+            <strong class="stat-value" id="stats-rate">0.0</strong>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Topic khác nhau</span>
+            <strong class="stat-value" id="stats-topics">0</strong>
+          </div>
+        </section>
+
+        <section class="chart-card" aria-labelledby="chart-title">
+          <div class="section-header chart-header">
+            <h2 class="section-title" id="chart-title">Biểu đồ</h2>
+            <p class="chart-limit" id="chart-limit" hidden>Đã đạt tối đa 8 đường</p>
+          </div>
+          <div class="chart-area">
+            <canvas id="realtime-chart" role="img" aria-label="Biểu đồ đường realtime"></canvas>
+            <div class="empty-state chart-empty" id="chart-empty">
+              <strong>Chưa có dữ liệu số.</strong>
+              <span id="chart-empty-text">Subscribe topic có payload là số hoặc JSON như {"temperature": 25.4}.</span>
+            </div>
+            <p class="chart-unavailable" id="chart-unavailable" role="status" hidden>Không tải được Chart.js</p>
+          </div>
+          <div class="chart-legend" id="chart-legend" aria-label="Các đường biểu đồ"></div>
+        </section>
+
       <section class="messages-pane" aria-labelledby="messages-title">
         <div class="pane-header">
           <div class="pane-heading">
-            <h2 class="pane-title" id="messages-title">Tin nhắn</h2>
+            <h2 class="pane-title" id="messages-title">Tin nhắn realtime</h2>
             <span class="count-badge" id="message-count" title="Số tin nhắn đang lưu">0</span>
           </div>
 
@@ -130,6 +162,7 @@
               <label class="sr-only" for="topic-filter">Lọc tin nhắn theo topic</label>
               <input class="input input--mono" id="topic-filter" type="search" placeholder="Lọc theo topic (+, #)" autocomplete="off" spellcheck="false">
             </div>
+            <button class="btn btn-quiet btn-sm" id="export-csv" type="button" disabled>Export CSV</button>
             <button class="btn btn-quiet btn-sm" id="clear-messages" type="button" title="Xóa toàn bộ tin nhắn">Xóa</button>
           </div>
         </div>
@@ -154,6 +187,7 @@
           </div>
         </div>
       </section>
+      </div>
 
       <aside class="side-rail" aria-label="Topic và publish">
         <section class="rail-section" aria-labelledby="subscriptions-title">
@@ -220,6 +254,7 @@
   <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

@@ -2,7 +2,13 @@
 
 (() => {
   const MAX_MESSAGES = 200;
+  const MAX_CHART_SERIES = 8;
+  const MAX_CHART_POINTS = 50;
   const MQTT_STATES = ["connecting", "connected", "disconnected", "error"];
+  const CHART_COLOR_TOKENS = Array.from(
+    { length: MAX_CHART_SERIES },
+    (_, index) => `--chart-series-${index + 1}`
+  );
   const THEME_KEY = "mqtt-dashboard-theme";
   const DEFAULT_STATUS = {
     connecting: "Đang kết nối tới broker...",
@@ -49,7 +55,16 @@
     messagesEmptyTitle: document.getElementById("messages-empty-title"),
     messagesEmptyText: document.getElementById("messages-empty-text"),
     messageCount: document.getElementById("message-count"),
+    statsTotal: document.getElementById("stats-total"),
+    statsRate: document.getElementById("stats-rate"),
+    statsTopics: document.getElementById("stats-topics"),
+    chartCanvas: document.getElementById("realtime-chart"),
+    chartEmpty: document.getElementById("chart-empty"),
+    chartLegend: document.getElementById("chart-legend"),
+    chartLimit: document.getElementById("chart-limit"),
+    chartUnavailable: document.getElementById("chart-unavailable"),
     topicFilter: document.getElementById("topic-filter"),
+    exportCsv: document.getElementById("export-csv"),
     clearMessages: document.getElementById("clear-messages"),
     toastContainer: document.getElementById("toast-container"),
   };
@@ -61,12 +76,19 @@
     hadSocketConnection: false,
     syncInProgress: false,
     seq: 0,
+    totalMessages: 0,
     lastToast: { key: "", at: 0 },
     socketErrorShown: false,
   };
 
   const topics = new Set();
+  const receivedTopics = new Set();
   const messages = [];
+  const recentMessageTimes = [];
+  const chartSeries = new Map();
+  let chart = null;
+  let chartUpdateScheduled = false;
+  let chartLimitReached = false;
   const timeFormatter = new Intl.DateTimeFormat("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
@@ -83,11 +105,14 @@
   let renderScheduled = false;
   let highlightLast = false;
 
+  initChart();
   initTheme();
   bindConnectionForm();
   bindSubscriptions();
   bindPublish();
   bindMessages();
+  updateStatistics();
+  window.setInterval(updateMessageRate, 1000);
   connectSocket();
   applyConnectionState("disconnected", DEFAULT_STATUS.disconnected, false);
   renderTopics();
@@ -122,6 +147,7 @@
     if (meta) {
       meta.setAttribute("content", dark ? "#070b14" : "#f4f6fb");
     }
+    updateChartTheme();
   }
 
   // -------------------------------------------------------------------------
@@ -228,6 +254,10 @@
   function applyConnectionState(nextState, message, reconnecting) {
     state.mqtt = MQTT_STATES.includes(nextState) ? nextState : "error";
     state.reconnecting = Boolean(reconnecting);
+    if (state.mqtt !== "connected") {
+      recentMessageTimes.length = 0;
+    }
+    updateStatistics();
 
     const visualState =
       state.mqtt === "disconnected" && state.reconnecting ? "connecting" : state.mqtt;
@@ -446,14 +476,8 @@
       filterQuery = els.topicFilter.value.trim();
       renderMessages(false);
     });
-    els.clearMessages.addEventListener("click", () => {
-      const hadMessages = messages.length > 0;
-      messages.length = 0;
-      renderMessages(false);
-      if (hadMessages) {
-        toast("Đã xóa toàn bộ tin nhắn.", "info");
-      }
-    });
+    els.exportCsv.addEventListener("click", exportCsv);
+    els.clearMessages.addEventListener("click", clearDashboardData);
   }
 
   function handleMqttMessage(data) {
@@ -470,6 +494,20 @@
       timestamp:
         typeof data.timestamp === "string" ? data.timestamp : new Date().toISOString(),
     };
+
+    const receivedAt = Date.now();
+    state.totalMessages += 1;
+    receivedTopics.add(message.topic);
+    recentMessageTimes.push(receivedAt);
+    pruneRecentMessageTimes(receivedAt);
+    updateStatistics(receivedAt);
+
+    const chartTimestamp = Date.parse(message.timestamp);
+    addMessageToChart(
+      message.topic,
+      message.payload,
+      Number.isFinite(chartTimestamp) ? chartTimestamp : receivedAt
+    );
 
     messages.push(message);
     if (messages.length > MAX_MESSAGES) {
@@ -501,6 +539,7 @@
 
     els.messageCount.textContent = String(messages.length);
     els.messageCount.title = `Đang lưu ${messages.length}/${MAX_MESSAGES} tin nhắn`;
+    els.exportCsv.disabled = visible.length === 0;
 
     const newestId = messages.length > 0 ? messages[messages.length - 1].id : null;
     const lastVisibleId = visible.length > 0 ? visible[visible.length - 1].id : null;
@@ -651,6 +690,338 @@
       }
     }
     return filterParts.length === topicParts.length;
+  }
+
+  // -------------------------------------------------------------------------
+  // Chart and statistics
+  // -------------------------------------------------------------------------
+  function initChart() {
+    if (typeof window.Chart !== "function") {
+      showChartUnavailable();
+      return;
+    }
+
+    try {
+      chart = new window.Chart(els.chartCanvas.getContext("2d"), {
+        type: "line",
+        data: { datasets: [] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          parsing: false,
+          interaction: { mode: "nearest", intersect: false },
+          scales: {
+            x: {
+              type: "linear",
+              ticks: {
+                autoSkip: true,
+                maxTicksLimit: 6,
+                callback: (value) => formatChartTime(value),
+              },
+              grid: { drawTicks: true },
+              border: {},
+            },
+            y: {
+              type: "linear",
+              beginAtZero: false,
+              ticks: { maxTicksLimit: 5 },
+              grid: {},
+              border: {},
+            },
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: (items) =>
+                  items.length ? formatChartTime(items[0].parsed.x) : "",
+                label: (context) => `${context.dataset.label}: ${context.parsed.y}`,
+              },
+            },
+          },
+        },
+      });
+    } catch (error) {
+      chart = null;
+      showChartUnavailable();
+      return;
+    }
+
+    els.chartUnavailable.hidden = true;
+    els.chartCanvas.hidden = false;
+    els.chartLegend.hidden = false;
+    updateChartEmptyState();
+    updateChartTheme();
+  }
+
+  function showChartUnavailable() {
+    els.chartCanvas.hidden = true;
+    els.chartEmpty.hidden = true;
+    els.chartLegend.hidden = true;
+    els.chartLimit.hidden = true;
+    els.chartUnavailable.hidden = false;
+  }
+
+  function updateChartTheme() {
+    if (!chart) {
+      return;
+    }
+    const styles = getComputedStyle(document.documentElement);
+    const getToken = (name) => styles.getPropertyValue(name).trim();
+    const textColor = getToken("--text-muted");
+    const gridColor = getToken("--border");
+
+    chart.options.scales.x.ticks.color = textColor;
+    chart.options.scales.y.ticks.color = textColor;
+    chart.options.scales.x.grid.color = gridColor;
+    chart.options.scales.y.grid.color = gridColor;
+    chart.options.scales.x.border.color = gridColor;
+    chart.options.scales.y.border.color = gridColor;
+    chart.options.plugins.tooltip.backgroundColor = getToken("--surface");
+    chart.options.plugins.tooltip.titleColor = getToken("--text");
+    chart.options.plugins.tooltip.bodyColor = getToken("--text");
+    chart.options.plugins.tooltip.borderColor = gridColor;
+    chart.options.plugins.tooltip.borderWidth = 1;
+    scheduleChartUpdate();
+  }
+
+  function chartColors() {
+    const styles = getComputedStyle(document.documentElement);
+    return CHART_COLOR_TOKENS.map(
+      (token) => styles.getPropertyValue(token).trim() || styles.getPropertyValue("--accent").trim()
+    );
+  }
+
+  function formatChartTime(value) {
+    const date = new Date(Number(value));
+    return Number.isNaN(date.getTime()) ? "" : timeFormatter.format(date);
+  }
+
+  function numericChartValues(topic, payload) {
+    const trimmed = payload.trim();
+    const rawNumberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+    if (rawNumberPattern.test(trimmed)) {
+      const value = Number(trimmed);
+      return Number.isFinite(value) ? [[topic, value]] : [];
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch (error) {
+      return [];
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return [];
+    }
+
+    return Object.entries(parsed)
+      .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+      .map(([key, value]) => [`${topic} · ${key}`, value]);
+  }
+
+  function addMessageToChart(topic, payload, timestamp) {
+    if (!chart) {
+      return;
+    }
+    const values = numericChartValues(topic, payload);
+    if (values.length === 0) {
+      return;
+    }
+
+    const colors = chartColors();
+    let changed = false;
+    values.forEach(([name, value]) => {
+      let dataset = chartSeries.get(name);
+      if (!dataset) {
+        if (chartSeries.size >= MAX_CHART_SERIES) {
+          chartLimitReached = true;
+          return;
+        }
+        const color = colors[chartSeries.size];
+        dataset = {
+          label: name,
+          data: [],
+          borderColor: color,
+          backgroundColor: color,
+          pointBackgroundColor: color,
+          pointBorderColor: color,
+          borderWidth: 2,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          tension: 0.15,
+          fill: false,
+        };
+        chartSeries.set(name, dataset);
+        chart.data.datasets.push(dataset);
+        changed = true;
+      }
+
+      dataset.data.push({ x: timestamp, y: value });
+      if (dataset.data.length > MAX_CHART_POINTS) {
+        dataset.data.shift();
+      }
+      changed = true;
+    });
+
+    els.chartLimit.hidden = !chartLimitReached;
+    if (changed) {
+      if (chartSeries.size > 0) {
+        els.chartEmpty.hidden = true;
+      }
+      if (chart.data.datasets.length !== els.chartLegend.childElementCount) {
+        renderChartLegend();
+      }
+      scheduleChartUpdate();
+    }
+  }
+
+  function renderChartLegend() {
+    els.chartLegend.replaceChildren();
+    chart.data.datasets.forEach((dataset, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "chart-legend-button";
+
+      const swatch = document.createElement("span");
+      swatch.className = "chart-legend-swatch";
+      swatch.style.backgroundColor = dataset.borderColor;
+      swatch.setAttribute("aria-hidden", "true");
+
+      const label = document.createElement("span");
+      label.className = "chart-legend-label";
+      label.textContent = dataset.label;
+
+      const visible = chart.isDatasetVisible(index);
+      button.setAttribute("aria-pressed", String(visible));
+      button.setAttribute("aria-label", `${visible ? "Ẩn" : "Hiện"} đường ${dataset.label}`);
+      button.append(swatch, label);
+      button.addEventListener("click", () => {
+        const nextVisible = !chart.isDatasetVisible(index);
+        chart.setDatasetVisibility(index, nextVisible);
+        button.setAttribute("aria-pressed", String(nextVisible));
+        button.setAttribute(
+          "aria-label",
+          `${nextVisible ? "Ẩn" : "Hiện"} đường ${dataset.label}`
+        );
+        scheduleChartUpdate();
+      });
+      els.chartLegend.append(button);
+    });
+  }
+
+  function scheduleChartUpdate() {
+    if (!chart || chartUpdateScheduled) {
+      return;
+    }
+    chartUpdateScheduled = true;
+    window.requestAnimationFrame(() => {
+      chartUpdateScheduled = false;
+      if (chart) {
+        chart.update("none");
+      }
+    });
+  }
+
+  function updateChartEmptyState() {
+    if (chart) {
+      els.chartEmpty.hidden = chartSeries.size > 0;
+    }
+  }
+
+  function pruneRecentMessageTimes(now) {
+    const cutoff = now - 5000;
+    while (recentMessageTimes.length > 0 && recentMessageTimes[0] < cutoff) {
+      recentMessageTimes.shift();
+    }
+  }
+
+  function updateStatistics(now = Date.now()) {
+    pruneRecentMessageTimes(now);
+    els.statsTotal.textContent = String(state.totalMessages);
+    els.statsRate.textContent =
+      state.mqtt === "connected" ? (recentMessageTimes.length / 5).toFixed(1) : "0.0";
+    els.statsTopics.textContent = String(receivedTopics.size);
+  }
+
+  function updateMessageRate() {
+    if (state.mqtt !== "connected") {
+      recentMessageTimes.length = 0;
+    }
+    updateStatistics();
+  }
+
+  function clearDashboardData() {
+    const hadMessages = state.totalMessages > 0 || messages.length > 0;
+    messages.length = 0;
+    recentMessageTimes.length = 0;
+    receivedTopics.clear();
+    state.totalMessages = 0;
+    chartSeries.clear();
+    chartLimitReached = false;
+    els.chartLimit.hidden = true;
+    els.chartLegend.replaceChildren();
+    if (chart) {
+      chart.data.datasets.forEach((dataset, index) => {
+        chart.setDatasetVisibility(index, true);
+      });
+      chart.data.datasets.length = 0;
+      updateChartEmptyState();
+      scheduleChartUpdate();
+    }
+    updateStatistics();
+    renderMessages(false);
+    if (hadMessages) {
+      toast("Đã xóa toàn bộ tin nhắn.", "info");
+    }
+  }
+
+  function exportCsv() {
+    const visible = messages.filter((message) =>
+      matchesTopicFilter(message.topic, filterQuery)
+    );
+    if (visible.length === 0) {
+      return;
+    }
+
+    const rows = [
+      ["timestamp", "topic", "payload", "qos", "retain"],
+      ...visible.map((message) => [
+        message.timestamp,
+        message.topic,
+        message.payload,
+        message.qos,
+        message.retain,
+      ]),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map(escapeCsvField).join(",")).join("\r\n")}\r\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `mqtt-messages-${localFileTimestamp(new Date())}.csv`;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    toast(`Đã xuất ${visible.length} tin nhắn`, "success");
+  }
+
+  function escapeCsvField(value) {
+    let text = String(value == null ? "" : value);
+    if (/^[=+\-@]/.test(text)) {
+      text = `'${text}`;
+    }
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  function localFileTimestamp(date) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(
+      date.getHours()
+    )}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
   }
 
   // -------------------------------------------------------------------------
