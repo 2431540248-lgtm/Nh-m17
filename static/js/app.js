@@ -4,6 +4,7 @@
   const MAX_MESSAGES = 200;
   const MAX_CHART_SERIES = 8;
   const MAX_CHART_POINTS = 50;
+  const MAX_DEVICE_SAMPLES = 500;
   const MQTT_STATES = ["connecting", "connected", "disconnected", "error"];
   const CHART_COLOR_TOKENS = Array.from(
     { length: MAX_CHART_SERIES },
@@ -94,6 +95,13 @@
     chartLegend: document.getElementById("chart-legend"),
     chartLimit: document.getElementById("chart-limit"),
     chartUnavailable: document.getElementById("chart-unavailable"),
+    statsUptime: document.getElementById("stats-uptime"),
+    statsIncidents: document.getElementById("stats-incidents"),
+    deviceStatsBody: document.getElementById("device-stats-body"),
+    deviceStatsEmpty: document.getElementById("device-stats-empty"),
+    clearDeviceStats: document.getElementById("clear-device-stats"),
+    exportDevicesCsv: document.getElementById("export-devices-csv"),
+    exportEventsCsv: document.getElementById("export-events-csv"),
     topicFilter: document.getElementById("topic-filter"),
     exportCsv: document.getElementById("export-csv"),
     clearMessages: document.getElementById("clear-messages"),
@@ -154,8 +162,14 @@
   const lanAgents = new Map();
   const lanDevices = new Map();
   const lanEvents = [];
+  const lanDeviceStats = new Map();
+  const lanDownCounts = new Map();
+  let lanTotalIncidents = 0;
+  let lanDeviceStatsRenderTimer = null;
+  let lanEventSequence = 0;
   const lanState = {
     rows: new Map(),
+    statsRows: new Map(),
     order: "",
     deviceLimitToasted: false,
     agentLimitToasted: false,
@@ -179,6 +193,7 @@
   lanRenderAgents();
   lanRenderDevices();
   lanRenderEvents();
+  lanRenderDeviceStats();
 
   // -------------------------------------------------------------------------
   // Theme
@@ -572,13 +587,6 @@
     pruneRecentMessageTimes(receivedAt);
     updateStatistics(receivedAt);
 
-    const chartTimestamp = Date.parse(message.timestamp);
-    addMessageToChart(
-      message.topic,
-      message.payload,
-      Number.isFinite(chartTimestamp) ? chartTimestamp : receivedAt
-    );
-
     messages.push(message);
     if (messages.length > MAX_MESSAGES) {
       messages.splice(0, messages.length - MAX_MESSAGES);
@@ -777,6 +785,9 @@
       }
     });
     els.clearEvents.addEventListener("click", lanClearEvents);
+    els.exportEventsCsv.addEventListener("click", exportLanEventsCsv);
+    els.clearDeviceStats.addEventListener("click", lanClearDeviceStats);
+    els.exportDevicesCsv.addEventListener("click", exportLanDevicesCsv);
   }
 
   function lanSubscribe() {
@@ -833,6 +844,11 @@
     try {
       const prefix = lanGetPrefix();
       if (!prefix) {
+        addMessageToChart(
+          message.topic,
+          message.payload,
+          lanParseTimestamp(message.timestamp, receivedAt)
+        );
         return;
       }
       const pattern = new RegExp(
@@ -840,6 +856,11 @@
       );
       const match = pattern.exec(message.topic);
       if (!match) {
+        addMessageToChart(
+          message.topic,
+          message.payload,
+          lanParseTimestamp(message.timestamp, receivedAt)
+        );
         return;
       }
 
@@ -995,11 +1016,7 @@
     }
 
     const updatedMs = lanParseTimestamp(payload.ts, receivedAt);
-    if (existing && updatedMs < existing.updatedMs) {
-      return;
-    }
-
-    lanDevices.set(key, {
+    const device = {
       key,
       agent,
       id: topicDeviceId,
@@ -1011,11 +1028,27 @@
       ports,
       mac: payload.mac === null ? null : lanClampText(payload.mac, 32),
       known: payload.known,
+      ts: payload.ts,
       updatedMs,
       receivedAt,
+    };
+    const addedSample = lanRecordDeviceSample(key, {
+      ts: payload.ts,
+      online: payload.online,
+      latency: payload.latency_ms,
     });
+    if (addedSample) {
+      addDeviceLatencyToChart(device, updatedMs);
+    }
+
+    if (existing && updatedMs < existing.updatedMs) {
+      return;
+    }
+
+    lanDevices.set(key, device);
 
     lanRenderDevices();
+    els.exportDevicesCsv.disabled = lanDevices.size === 0;
   }
 
   function lanApplyEvent(agent, payload, receivedAt) {
@@ -1042,8 +1075,17 @@
       host: lanClampText(payload.host, 64),
       name: lanClampText(payload.name, 64),
       message: lanClampText(payload.message, 200),
+      timestamp: payload.ts,
       tsMs: lanParseTimestamp(payload.ts, receivedAt),
+      sequence: ++lanEventSequence,
     };
+
+    if (event.type === "device_down") {
+      const deviceIdentity = lanDeviceIdentity(event.agent, event.host);
+      lanDownCounts.set(deviceIdentity, (lanDownCounts.get(deviceIdentity) || 0) + 1);
+      lanTotalIncidents += 1;
+      scheduleLanDeviceStatsRender();
+    }
 
     lanEvents.unshift(event);
     if (lanEvents.length > MAX_LAN_EVENTS) {
@@ -1077,6 +1119,7 @@
     els.eventCount.textContent = String(lanEvents.length);
     els.eventCount.title = `Đang lưu ${lanEvents.length}/${MAX_LAN_EVENTS} cảnh báo`;
     els.eventEmpty.hidden = lanEvents.length > 0;
+    els.exportEventsCsv.disabled = lanEvents.length === 0;
 
     const fragment = document.createDocumentFragment();
     lanEvents.forEach((event) => {
@@ -1499,6 +1542,168 @@
     return typeof value === "number" && Number.isFinite(value);
   }
 
+  function lanRecordDeviceSample(key, sample) {
+    let stats = lanDeviceStats.get(key);
+    if (!stats) {
+      stats = { samples: [] };
+      lanDeviceStats.set(key, stats);
+    }
+    const lastSample = stats.samples[stats.samples.length - 1];
+    if (lastSample && lastSample.ts === sample.ts) {
+      return false;
+    }
+
+    stats.samples.push(sample);
+    if (stats.samples.length > MAX_DEVICE_SAMPLES) {
+      stats.samples.shift();
+    }
+    scheduleLanDeviceStatsRender();
+    return true;
+  }
+
+  function lanDeviceIdentity(agent, host) {
+    return `${agent}\u0000${host}`;
+  }
+
+  function scheduleLanDeviceStatsRender() {
+    if (lanDeviceStatsRenderTimer !== null) {
+      return;
+    }
+    lanDeviceStatsRenderTimer = window.setTimeout(() => {
+      lanDeviceStatsRenderTimer = null;
+      lanRenderDeviceStats();
+    }, 500);
+  }
+
+  function lanClearDeviceStats() {
+    lanDeviceStats.clear();
+    lanDownCounts.clear();
+    lanTotalIncidents = 0;
+    if (lanDeviceStatsRenderTimer !== null) {
+      window.clearTimeout(lanDeviceStatsRenderTimer);
+      lanDeviceStatsRenderTimer = null;
+    }
+    lanRenderDeviceStats();
+    toast("Đã xóa thống kê thiết bị.", "info");
+  }
+
+  function lanRenderDeviceStats() {
+    const rows = Array.from(lanDeviceStats.entries())
+      .map(([key, stats]) => ({ key, stats, device: lanDevices.get(key) }))
+      .filter((item) => item.device)
+      .sort((a, b) => {
+        const nameA = a.device.name || a.device.host || a.device.id;
+        const nameB = b.device.name || b.device.host || b.device.id;
+        const nameDiff = nameA.localeCompare(nameB, "vi", { sensitivity: "base" });
+        return nameDiff || a.device.agent.localeCompare(b.device.agent, "vi");
+      });
+
+    const uptimeValues = [];
+    const seen = new Set();
+    rows.forEach(({ key, stats, device }) => {
+      const uptime = computeUptimePercent(stats.samples);
+      const latency = computeLatencyStats(stats.samples);
+      if (uptime !== null) {
+        uptimeValues.push(uptime);
+      }
+
+      let entry = lanState.statsRows.get(key);
+      if (!entry) {
+        const row = document.createElement("tr");
+        const cells = Array.from({ length: 9 }, () => document.createElement("td"));
+        row.append(...cells);
+        entry = { row, cells };
+        lanState.statsRows.set(key, entry);
+      }
+
+      const deviceName = device.name || device.host || device.id;
+      const downCount = lanDownCounts.get(lanDeviceIdentity(device.agent, device.host)) || 0;
+      const values = [
+        deviceName,
+        device.agent,
+        uptime === null ? "—" : `${uptime.toFixed(1)}%`,
+        formatLatencyStat(latency.average),
+        formatLatencyStat(latency.min),
+        formatLatencyStat(latency.max),
+        formatLatencyStat(latency.p95),
+        String(downCount),
+        String(stats.samples.length),
+      ];
+      values.forEach((value, index) => lanSetText(entry.cells[index], value));
+      entry.cells[0].title = device.host;
+      seen.add(key);
+    });
+
+    lanState.statsRows.forEach((entry, key) => {
+      if (!seen.has(key)) {
+        entry.row.remove();
+        lanState.statsRows.delete(key);
+      }
+    });
+
+    const order = rows.map((item) => item.key).join("\u0000");
+    if (order !== lanState.statsOrder) {
+      rows.forEach(({ key }) => {
+        const entry = lanState.statsRows.get(key);
+        if (entry) {
+          els.deviceStatsBody.append(entry.row);
+        }
+      });
+      lanState.statsOrder = order;
+    }
+
+    els.deviceStatsEmpty.hidden = rows.length > 0;
+    els.statsUptime.textContent = uptimeValues.length
+      ? `${(uptimeValues.reduce((sum, value) => sum + value, 0) / uptimeValues.length).toFixed(1)}%`
+      : "—";
+    els.statsIncidents.textContent = String(lanTotalIncidents);
+    els.exportDevicesCsv.disabled = lanDevices.size === 0;
+  }
+
+  function computeUptimePercent(samples) {
+    if (!Array.isArray(samples) || samples.length === 0) {
+      return null;
+    }
+    const onlineCount = samples.reduce(
+      (count, sample) => count + (sample && sample.online === true ? 1 : 0),
+      0
+    );
+    return (onlineCount / samples.length) * 100;
+  }
+
+  function nearestRankPercentile(values, percentile) {
+    const sorted = Array.isArray(values)
+      ? values.filter(lanIsFiniteNumber).slice().sort((a, b) => a - b)
+      : [];
+    if (sorted.length === 0) {
+      return null;
+    }
+    const rank = Math.min(sorted.length, Math.max(1, Math.ceil(percentile * sorted.length)));
+    return sorted[rank - 1];
+  }
+
+  function computeLatencyStats(samples) {
+    const values = Array.isArray(samples)
+      ? samples
+          .map((sample) => (sample ? sample.latency : null))
+          .filter(lanIsFiniteNumber)
+      : [];
+    if (values.length === 0) {
+      return { average: null, min: null, max: null, p95: null };
+    }
+    const sum = values.reduce((total, value) => total + value, 0);
+    return {
+      average: sum / values.length,
+      min: Math.min(...values),
+      max: Math.max(...values),
+      p95: nearestRankPercentile(values, 0.95),
+    };
+  }
+
+  function formatLatencyStat(value) {
+    return lanIsFiniteNumber(value) ? value.toFixed(1) : "—";
+  }
+
   // -------------------------------------------------------------------------
   // Chart and statistics
   // -------------------------------------------------------------------------
@@ -1543,7 +1748,15 @@
               callbacks: {
                 title: (items) =>
                   items.length ? formatChartTime(items[0].parsed.x) : "",
-                label: (context) => `${context.dataset.label}: ${context.parsed.y}`,
+                label: (context) => {
+                  const value = context.parsed.y;
+                  const formatted = lanIsFiniteNumber(value)
+                    ? context.dataset.isDeviceSeries
+                      ? `${value.toFixed(1)} ms`
+                      : String(value)
+                    : "—";
+                  return `${context.dataset.label}: ${formatted}`;
+                },
               },
             },
           },
@@ -1637,47 +1850,121 @@
       return;
     }
 
-    const colors = chartColors();
-    let changed = false;
     values.forEach(([name, value]) => {
-      let dataset = chartSeries.get(name);
-      if (!dataset) {
-        if (chartSeries.size >= MAX_CHART_SERIES) {
-          chartLimitReached = true;
-          return;
-        }
-        const color = colors[chartSeries.size];
-        dataset = {
-          label: name,
-          data: [],
-          borderColor: color,
-          backgroundColor: color,
-          pointBackgroundColor: color,
-          pointBorderColor: color,
-          borderWidth: 2,
-          pointRadius: 2,
-          pointHoverRadius: 4,
-          tension: 0.15,
-          fill: false,
-        };
-        chartSeries.set(name, dataset);
-        chart.data.datasets.push(dataset);
-        changed = true;
-      }
-
-      dataset.data.push({ x: timestamp, y: value });
-      if (dataset.data.length > MAX_CHART_POINTS) {
-        dataset.data.shift();
-      }
-      changed = true;
+      addChartSeriesPoint(`generic:${name}`, name, value, timestamp, false);
     });
+  }
 
+  function addDeviceLatencyToChart(device, timestamp) {
+    if (!chart) {
+      return;
+    }
+    const key = `lanmon-device:${device.key}`;
+    const baseLabel = device.name || device.host || device.id;
+    const label = uniqueDeviceChartLabel(key, baseLabel, device.host, device.agent);
+    addChartSeriesPoint(key, label, device.latencyMs, timestamp, true, {
+      baseLabel,
+      host: device.host,
+      agent: device.agent,
+    });
+  }
+
+  function uniqueDeviceChartLabel(key, baseLabel, host, agent, reservedLabels = []) {
+    const labels = new Set(
+      Array.from(chartSeries.entries())
+        .filter(([seriesKey]) => seriesKey !== key)
+        .map(([, dataset]) => dataset.label)
+    );
+    reservedLabels.forEach((label) => labels.add(label));
+    if (!labels.has(baseLabel)) {
+      return baseLabel;
+    }
+    const hostLabel = host || "unknown host";
+    let label = `${baseLabel} (${hostLabel})`;
+    if (labels.has(label)) {
+      label = `${baseLabel} (${hostLabel} · ${agent})`;
+    }
+    let suffix = 2;
+    while (labels.has(label)) {
+      label = `${baseLabel} (${hostLabel} · ${agent} ${suffix})`;
+      suffix += 1;
+    }
+    return label;
+  }
+
+  function addChartSeriesPoint(key, label, value, timestamp, isDevice, deviceInfo = null) {
+    if (!chart) {
+      return;
+    }
+    let dataset = chartSeries.get(key);
+    let changed = false;
+    let labelChanged = false;
+    if (!isDevice) {
+      chartSeries.forEach((existing, existingKey) => {
+        if (existing.isDeviceSeries && existing.label === label) {
+          existing.label = uniqueDeviceChartLabel(
+            existingKey,
+            existing.baseLabel,
+            existing.deviceHost,
+            existing.deviceAgent,
+            [label]
+          );
+          labelChanged = true;
+          changed = true;
+        }
+      });
+    }
+    if (!dataset) {
+      if (chartSeries.size >= MAX_CHART_SERIES) {
+        chartLimitReached = true;
+        els.chartLimit.hidden = false;
+        return;
+      }
+      const color = chartColors()[chartSeries.size];
+      dataset = {
+        label,
+        data: [],
+        borderColor: color,
+        backgroundColor: color,
+        pointBackgroundColor: color,
+        pointBorderColor: color,
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        tension: 0.15,
+        fill: false,
+        spanGaps: false,
+        isDeviceSeries: isDevice,
+        baseLabel: isDevice ? deviceInfo.baseLabel : null,
+        deviceHost: isDevice ? deviceInfo.host : null,
+        deviceAgent: isDevice ? deviceInfo.agent : null,
+      };
+      chartSeries.set(key, dataset);
+      chart.data.datasets.push(dataset);
+      changed = true;
+      labelChanged = true;
+    } else if (dataset.label !== label) {
+      dataset.label = label;
+      labelChanged = true;
+      changed = true;
+    }
+    if (isDevice && deviceInfo) {
+      dataset.baseLabel = deviceInfo.baseLabel;
+      dataset.deviceHost = deviceInfo.host;
+      dataset.deviceAgent = deviceInfo.agent;
+    }
+
+    dataset.data.push({ x: timestamp, y: value });
+    if (dataset.data.length > MAX_CHART_POINTS) {
+      dataset.data.shift();
+    }
+    changed = true;
     els.chartLimit.hidden = !chartLimitReached;
     if (changed) {
       if (chartSeries.size > 0) {
         els.chartEmpty.hidden = true;
       }
-      if (chart.data.datasets.length !== els.chartLegend.childElementCount) {
+      if (labelChanged || chart.data.datasets.length !== els.chartLegend.childElementCount) {
         renderChartLegend();
       }
       scheduleChartUpdate();
@@ -1802,18 +2089,105 @@
         message.retain,
       ]),
     ];
+    downloadCsvFile(`mqtt-messages-${localFileTimestamp(new Date())}.csv`, rows);
+    toast(`Đã xuất ${visible.length} tin nhắn`, "success");
+  }
+
+  function exportLanDevicesCsv() {
+    const devices = Array.from(lanDevices.values()).sort((a, b) => {
+      const agentDiff = a.agent.localeCompare(b.agent, "vi", { sensitivity: "base" });
+      return agentDiff || a.host.localeCompare(b.host, "vi", { sensitivity: "base" });
+    });
+    if (devices.length === 0) {
+      return;
+    }
+
+    const rows = [
+      [
+        "agent",
+        "host",
+        "name",
+        "mac",
+        "known",
+        "status",
+        "uptime_pct",
+        "samples",
+        "latency_avg_ms",
+        "latency_min_ms",
+        "latency_max_ms",
+        "latency_p95_ms",
+        "loss_pct",
+        "open_ports",
+        "down_count",
+        "last_seen",
+      ],
+      ...devices.map((device) => {
+        const stats = lanDeviceStats.get(device.key);
+        const samples = stats ? stats.samples : [];
+        const uptime = computeUptimePercent(samples);
+        const latency = computeLatencyStats(samples);
+        const openPorts = Object.keys(device.ports)
+          .filter((port) => device.ports[port])
+          .sort((a, b) => Number(a) - Number(b))
+          .join(";");
+        return [
+          device.agent,
+          device.host,
+          device.name,
+          device.mac,
+          device.known,
+          lanDeviceStatus(device, Date.now()).key.replace("agent-offline", "agent_offline"),
+          uptime === null ? "" : uptime.toFixed(1),
+          samples.length,
+          latency.average === null ? "" : latency.average.toFixed(1),
+          latency.min === null ? "" : latency.min.toFixed(1),
+          latency.max === null ? "" : latency.max.toFixed(1),
+          latency.p95 === null ? "" : latency.p95.toFixed(1),
+          device.lossPct,
+          openPorts,
+          lanDownCounts.get(lanDeviceIdentity(device.agent, device.host)) || 0,
+          device.ts,
+        ];
+      }),
+    ];
+    downloadCsvFile(`lanmon-devices-${localFileTimestamp(new Date())}.csv`, rows);
+    toast(`Đã xuất ${devices.length} dòng`, "success");
+  }
+
+  function exportLanEventsCsv() {
+    const events = lanEvents.slice().sort((a, b) => a.tsMs - b.tsMs || a.sequence - b.sequence);
+    if (events.length === 0) {
+      return;
+    }
+
+    const rows = [
+      ["timestamp", "severity", "type", "agent", "host", "name", "message"],
+      ...events.map((event) => [
+        event.timestamp,
+        event.severity,
+        event.type,
+        event.agent,
+        event.host,
+        event.name,
+        event.message,
+      ]),
+    ];
+    downloadCsvFile(`lanmon-events-${localFileTimestamp(new Date())}.csv`, rows);
+    toast(`Đã xuất ${events.length} dòng`, "success");
+  }
+
+  function downloadCsvFile(filename, rows) {
     const csv = `\uFEFF${rows.map((row) => row.map(escapeCsvField).join(",")).join("\r\n")}\r\n`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = `mqtt-messages-${localFileTimestamp(new Date())}.csv`;
+    link.download = filename;
     link.hidden = true;
     document.body.append(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    toast(`Đã xuất ${visible.length} tin nhắn`, "success");
   }
 
   function escapeCsvField(value) {

@@ -501,7 +501,7 @@ kbd {
   flex: none;
   flex-direction: column;
   min-width: 0;
-  height: clamp(220px, 30vh, 300px);
+  height: clamp(420px, 48vh, 500px);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -704,9 +704,10 @@ kbd {
 
 .lanmon-subheader {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 5px 8px;
   flex: none;
   min-height: 28px;
   padding: 3px 12px;
@@ -714,8 +715,18 @@ kbd {
   background: var(--surface-soft);
 }
 
+.lanmon-subheader-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .lanmon-subheading {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
   min-width: 0;
@@ -1153,6 +1164,111 @@ kbd {
   color: var(--text-muted);
   font-size: 11.5px;
   text-align: center;
+}
+
+.device-stats {
+  flex: none;
+  min-width: 0;
+  max-width: 100%;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.device-stats-header {
+  min-height: 38px;
+  padding: 6px 12px;
+}
+
+.device-stats-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.device-stats-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  border-bottom: 1px solid var(--border);
+  background: var(--border);
+}
+
+.device-stats-kpi {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 12px;
+  background: var(--surface-soft);
+}
+
+.device-stats-table-wrap {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.device-stats-table-wrap:focus-visible {
+  outline-offset: -2px;
+}
+
+.device-stats-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 10.5px;
+  text-align: left;
+}
+
+.device-stats-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.device-stats-table td {
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.device-stats-table td:nth-child(n + 3) {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.device-stats-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.device-stats-table tbody tr:hover td {
+  background: var(--surface-soft);
+}
+
+.device-stats-empty {
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  text-align: center;
+}
+
+.device-stats-empty[hidden] {
+  display: none !important;
 }
 
 .messages-pane {
@@ -2026,6 +2142,18 @@ input[type="number"]::-webkit-outer-spin-button {
 /* --------------------------------------------------------------------------
    Responsive
    -------------------------------------------------------------------------- */
+@media (min-width: 1081px) {
+  .primary-pane {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .primary-pane > .messages-pane {
+    flex: 1 0 280px;
+  }
+}
+
 @media (max-width: 1180px) {
   .connection-bar {
     grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
@@ -2345,6 +2473,17 @@ input[type="number"]::-webkit-outer-spin-button {
   .lanmon-agents-wrap {
     align-items: flex-start;
   }
+
+  .device-stats-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .device-stats-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 400px) {
@@ -2362,6 +2501,15 @@ input[type="number"]::-webkit-outer-spin-button {
 
   .lanmon-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lanmon-subheader-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .device-stats-actions .btn {
+    flex: 1 1 145px;
   }
 }
 

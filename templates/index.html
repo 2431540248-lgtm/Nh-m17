@@ -193,7 +193,10 @@
                   <h3 class="lanmon-subtitle" id="events-title">Nhật ký cảnh báo</h3>
                   <span class="count-badge" id="event-count" title="Số cảnh báo đang lưu">0</span>
                 </div>
-                <button class="btn btn-quiet btn-sm" id="clear-events" type="button">Xóa nhật ký</button>
+                <div class="lanmon-subheader-actions">
+                  <button class="btn btn-quiet btn-sm" id="export-events-csv" type="button" title="Xuất nhật ký cảnh báo ra CSV" aria-label="Xuất nhật ký cảnh báo ra CSV" disabled>Xuất CSV</button>
+                  <button class="btn btn-quiet btn-sm" id="clear-events" type="button">Xóa nhật ký</button>
+                </div>
               </div>
               <div class="lanmon-event-scroll">
                 <ol class="lanmon-event-list" id="event-list" aria-live="polite"></ol>
@@ -223,7 +226,7 @@
 
         <section class="chart-card" aria-labelledby="chart-title">
           <div class="section-header chart-header">
-            <h2 class="section-title" id="chart-title">Biểu đồ</h2>
+            <h2 class="section-title" id="chart-title">Độ trễ theo thời gian</h2>
             <p class="chart-limit" id="chart-limit" hidden>Đã đạt tối đa 8 đường</p>
           </div>
           <div class="chart-area">
@@ -235,6 +238,48 @@
             <p class="chart-unavailable" id="chart-unavailable" role="status" hidden>Không tải được Chart.js</p>
           </div>
           <div class="chart-legend" id="chart-legend" aria-label="Các đường biểu đồ"></div>
+        </section>
+
+        <section class="device-stats" id="device-stats" aria-labelledby="device-stats-title">
+          <div class="section-header device-stats-header">
+            <h2 class="section-title" id="device-stats-title">Thống kê thiết bị</h2>
+            <div class="device-stats-actions">
+              <button class="btn btn-quiet btn-sm" id="export-devices-csv" type="button" disabled>Xuất thống kê thiết bị</button>
+              <button class="btn btn-quiet btn-sm" id="clear-device-stats" type="button">Xóa thống kê</button>
+            </div>
+          </div>
+          <div class="device-stats-summary" aria-label="Tổng quan thống kê thiết bị">
+            <div class="device-stats-kpi">
+              <span class="stat-label">Uptime trung bình</span>
+              <strong class="stat-value" id="stats-uptime">—</strong>
+            </div>
+            <div class="device-stats-kpi">
+              <span class="stat-label">Số lần mất kết nối</span>
+              <strong class="stat-value" id="stats-incidents">0</strong>
+            </div>
+          </div>
+          <div class="device-stats-table-wrap" tabindex="0" role="region" aria-label="Thống kê theo thiết bị">
+            <table class="device-stats-table">
+              <caption class="sr-only">Uptime và độ trễ của từng thiết bị</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Thiết bị</th>
+                  <th scope="col">Agent</th>
+                  <th scope="col">Uptime %</th>
+                  <th scope="col">Độ trễ TB (ms)</th>
+                  <th scope="col">Min (ms)</th>
+                  <th scope="col">Max (ms)</th>
+                  <th scope="col">P95 (ms)</th>
+                  <th scope="col">Số lần mất kết nối</th>
+                  <th scope="col">Số mẫu</th>
+                </tr>
+              </thead>
+              <tbody id="device-stats-body"></tbody>
+            </table>
+            <div class="empty-state device-stats-empty" id="device-stats-empty">
+              <span>Chưa có dữ liệu thống kê thiết bị.</span>
+            </div>
+          </div>
         </section>
 
       <section class="messages-pane" aria-labelledby="messages-title">
